@@ -17,6 +17,7 @@
 |---|---|---|
 | Global navigation | `Enter` | Open item |
 | Global navigation | `Space` | Toggle selection |
+| Global navigation | `S` | Select/Deselect all files listed |
 | Global navigation | `Esc` | Dismiss/back |
 | Global navigation | `j/k`, arrows | Navigate |
 | Global navigation | `Tab` / `Shift+Tab` | Next/previous panel |
