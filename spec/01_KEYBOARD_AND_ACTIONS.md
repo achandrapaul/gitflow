@@ -29,7 +29,6 @@
 | Changes | `s` | Stage focused-or-selected change scope |
 | Changes | `u` | Unstage focused-or-selected change scope |
 | Changes | `d` | Open discard confirmation; do not execute until explicit confirmation |
-| Changes | `S` | Select all visible files (UI only; clears them if all are selected); never mutates the index |
 | Changes | `c c` | Commit composer |
 | Changes | `c a` | Amend composer |
 | History | `c p` | Cherry-pick planner |

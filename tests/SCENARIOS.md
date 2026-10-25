@@ -37,3 +37,20 @@ Run tests in temporary repositories initialized by test harness. Use real Git an
 
 ## Coverage reporting format
 For every `tests/ACCEPTANCE.md` ID report: Implemented / Verified / Blocked / Deferred, linked source module, automated test ID, measured evidence. Do not use “Complete” for mock-only UI.
+
+
+## v1.1 additional Git integration fixtures
+31. Pull from configured upstream after upstream advances: ff-only success; verify resulting HEAD.
+32. Pull diverged history: refuse without implicit merge/rebase, working state preserved.
+33. Push normal fast-forward; check actual remote ref advanced.
+34. Push rejected non-fast-forward; never force.
+35. No-upstream pull/push blocked before Git mutation.
+36. Three-file source commit; select one file and verify exactly one file patch applied, no new commit.
+37. Select two files from same commit: third file unchanged; resulting index/worktree consistent.
+38. Selected patch conflicts with destination: no unreported partial success, verify exact state.
+39. Select same path across two commits: explicit order, accurate completed-step reporting on failure.
+40. Added, deleted, renamed and binary file cases: implement correctly or show disabled reason rather than corrupting state.
+41. Merge commit file inspection: choose mainline explicitly; block ambiguous parent.
+42. Escape S13, S14 and S15: byte-for-byte unchanged repository state.
+43. Remote ahead/behind compared to tracking upstream distinct from comparison main; stale refs labeled.
+44. File selection persists across inspector navigation and commit-history pagination.

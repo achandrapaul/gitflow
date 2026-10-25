@@ -61,3 +61,7 @@
 - [ ] N05 macOS and Linux tested; untested platform explicitly marked pending.
 - [ ] N06 UI and Git workflow layers are separated; no required background service.
 - [ ] N07 P0 scope complete; out-of-scope features not introduced.
+
+
+## v1.1 additional mandatory acceptance criteria
+Implement A01–A14 from `spec/05_INTELLIJ_STYLE_GIT_WORKSPACE.md` as automated test cases wherever Git backend semantics are involved.

@@ -89,3 +89,48 @@ Palette entered with `:` and fuzzy filters only documented commands from shared 
 - Loading: UI frame interactive, status/history placeholders then asynchronously filled.
 - External repository mutation: present refreshed Git state and invalidate stale plan with clear message.
 - Git error: show command context, stderr excerpt, retry/return as applicable, no bogus “success.”
+
+
+## S13 — Commit File Inspector (v1.1 approved)
+```text
+┌─ COMMIT INSPECTOR ─ c45d391 Fix refresh token handling ──────────────┐
+│ Author: A. Developer   Parent: abc123   3 changed files              │
+├─ FILES IN COMMIT ───────────┬─ COMMIT PATCH PREVIEW ─────────────────┤
+│ ▶ [x] M src/auth/token.ts   │ diff parent(c45d391) → c45d391       │
+│   [ ] M src/auth/api.ts     │ - old logic                          │
+│   [x] A tests/auth.test.ts  │ + new logic                          │
+├─────────────────────────────┴────────────────────────────────────────┤
+│ Space select file · Enter inspect · c f Apply selected files · Esc ↩ │
+└───────────────────────────────────────────────────────────────────────┘
+```
+Space selection is (commit OID, parent choice, changed path) typed; never whole-commit cherry-pick. Display exact selected count. Read `spec/05_INTELLIJ_STYLE_GIT_WORKSPACE.md` for merge parent and rename requirements.
+
+## S14 — Selective Apply Planner (v1.1 approved)
+```text
+┌─ APPLY FILES FROM COMMITS — NOT CHERRY-PICK ─────────────────────────┐
+│ CURRENT DESTINATION: feature/auth  (current checkout only)           │
+│ [1] c45d391   src/auth/token.ts    M                                 │
+│ [2] c45d391   tests/auth.test.ts   A                                 │
+│ Apply parent→commit patches for SELECTED FILES ONLY; no new commit.   │
+│ State before apply: clean? yes/no · Expected result: staged patches  │
+│ Review patch • Validate prerequisites • [Execute] • [Cancel]         │
+│ Esc Back — never revert any Git state                                │
+└───────────────────────────────────────────────────────────────────────┘
+```
+Explicit step order, partial-failure reporting, preview, confirm; NO implicit source commit recreation and NO unsafe restoration.
+
+## S15 — Remote Sync Review (v1.1 approved)
+```text
+┌─ PULL / PUSH REVIEW ─────────────────────────────────────────────────┐
+│ Action       : Pull (fast-forward-only)                               │
+│ Local branch : feature/auth                                          │
+│ Upstream     : origin/feature/auth                                   │
+│ Tracking     : ↑2 ↓1  (from local refs; fetch freshness unknown)      │
+│ Compared main: ↑7 ↓3  (independent metric, not pull target)          │
+│ Command      : git pull --ff-only [configured upstream]              │
+│ Result       : Pending; no command executed                          │
+│ [Review] [Execute] [Cancel]                                          │
+│ Esc Back · g l Pull · g p Push · g f Fetch                            │
+└───────────────────────────────────────────────────────────────────────┘
+```
+Use actual data, never hardcode the sample. If no tracking upstream, disable Pull/Push and explain. Execute is a separate focused control after review; cancellation does not run Git.

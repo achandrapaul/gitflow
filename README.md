@@ -31,3 +31,7 @@
 Extract the ZIP into a project working directory and tell Claude Code: **“Read `CLAUDE.md` and implement exactly the bundled GitFlow specification. Do not introduce extra features. Maintain a requirement-to-test coverage matrix and report decisions or blockers.”**
 
 Sample filenames and counts across the screen prototypes are illustrative only. Product screens must draw values from the real repo.
+
+
+## Approved v1.1 update
+**Read `spec/05_INTELLIJ_STYLE_GIT_WORKSPACE.md`**. This adds IntelIiJ-inspired history-to-file navigation, reviewed pull/push, and file-selective commit patch application. The latter is intentionally **not** the same Git operation as cherry-picking a whole commit. The added screens S13–S15 are binding.

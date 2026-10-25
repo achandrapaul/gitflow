@@ -1,6 +1,5 @@
-GitFlow Claude handoff
-
 CLAUDE.md
+MANIFEST.txt
 README.md
 prototype/index.html
 screens/SCREEN_SPECS.md
@@ -10,5 +9,6 @@ spec/01_KEYBOARD_AND_ACTIONS.md
 spec/02_GIT_SEMANTICS.md
 spec/03_WORKFLOWS.md
 spec/04_SCOPE_AND_OPEN_DECISIONS.md
+spec/05_INTELLIJ_STYLE_GIT_WORKSPACE.md
 tests/ACCEPTANCE.md
 tests/SCENARIOS.md

@@ -81,3 +81,7 @@
 3. From S05 menu press Esc → menu closes, selections remain.
 4. From S09 resolver press Esc → S08, Git unchanged.
 5. From S08 press Esc → S01, Git stays paused.
+
+
+## New required click-by-click equivalent keyboard journeys (J11–J16)
+See `spec/05_INTELLIJ_STYLE_GIT_WORKSPACE.md` for precise S01→S15 Pull, Push, S04→S06 whole-commit cherry-pick, S04→S13→S14 per-file application, across-commit file selection, and S04→S07 rebase. Each step uses keyboard focus + Enter/Space/Esc, not mouse clicks.
