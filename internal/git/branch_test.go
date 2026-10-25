@@ -2,6 +2,7 @@ package git_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -118,6 +119,126 @@ func TestBranchIntelligence(t *testing.T) {
 		}
 		if err := git.DeleteBranch(ctx, fixture.Runner, "main"); err != nil {
 			t.Fatalf("delete: %v", err)
+		}
+	})
+}
+
+func TestRemoteSync(t *testing.T) {
+	ctx := context.Background()
+	trackedFixture := func(t *testing.T) *gittest.Fixture {
+		fixture := gittest.New(t)
+		fixture.BareRemote("origin")
+		fixture.Commit("base", map[string]string{"a.txt": "a\n"})
+		fixture.Git("push", "-q", "-u", "origin", "main")
+		return fixture
+	}
+	invocation := func(t *testing.T, fixture *gittest.Fixture, kind git.SyncKind) git.Invocation {
+		t.Helper()
+		upstream, err := git.LoadUpstream(ctx, fixture.Runner, "main")
+		if err != nil {
+			t.Fatalf("load upstream: %v", err)
+		}
+		built, err := git.SyncInvocation(kind, upstream)
+		if err != nil {
+			t.Fatalf("build %v invocation: %v", kind, err)
+		}
+		return built
+	}
+	remoteMain := func(fixture *gittest.Fixture) string {
+		return strings.Fields(fixture.Git("ls-remote", "origin", "refs/heads/main"))[0]
+	}
+
+	t.Run("upstream is read from tracking configuration", func(t *testing.T) {
+		fixture := trackedFixture(t)
+		upstream, err := git.LoadUpstream(ctx, fixture.Runner, "main")
+		if err != nil || upstream.Remote != "origin" || upstream.RemoteRef != "refs/heads/main" {
+			t.Fatalf("upstream = %+v err = %v", upstream, err)
+		}
+		pull := invocation(t, fixture, git.SyncPull)
+		push := invocation(t, fixture, git.SyncPush)
+		fetch := invocation(t, fixture, git.SyncFetch)
+		if strings.Join(pull.Args, " ") != "pull --ff-only" || strings.Join(push.Args, " ") != "push origin HEAD:refs/heads/main" || strings.Join(fetch.Args, " ") != "fetch origin" {
+			t.Fatalf("pull %v push %v fetch %v", pull.Args, push.Args, fetch.Args)
+		}
+	})
+
+	t.Run("31 fast-forward-only pull advances to the upstream", func(t *testing.T) {
+		fixture := trackedFixture(t)
+		advanced := fixture.Commit("upstream advance", map[string]string{"b.txt": "b\n"})
+		fixture.Git("push", "-q", "origin", "main")
+		fixture.Git("reset", "-q", "--hard", "HEAD~1")
+		if _, err := fixture.Runner.Execute(ctx, invocation(t, fixture, git.SyncPull)); err != nil {
+			t.Fatalf("pull: %v", err)
+		}
+		if head := strings.TrimSpace(fixture.Git("rev-parse", "HEAD")); head != advanced {
+			t.Fatalf("HEAD = %s, want %s", head, advanced)
+		}
+	})
+
+	t.Run("32 diverged pull is refused without merge or rebase", func(t *testing.T) {
+		fixture := trackedFixture(t)
+		fixture.Commit("upstream advance", map[string]string{"b.txt": "b\n"})
+		fixture.Git("push", "-q", "origin", "main")
+		fixture.Git("reset", "-q", "--hard", "HEAD~1")
+		local := fixture.Commit("local work", map[string]string{"c.txt": "c\n"})
+		before := fixture.Snapshot()
+		if _, err := fixture.Runner.Execute(ctx, invocation(t, fixture, git.SyncPull)); err == nil {
+			t.Fatal("expected diverged ff-only pull to fail")
+		}
+		if head := strings.TrimSpace(fixture.Git("rev-parse", "HEAD")); head != local {
+			t.Fatalf("HEAD moved to %s", head)
+		}
+		if fixture.Snapshot() != before {
+			t.Fatal("refused pull changed the repository")
+		}
+	})
+
+	t.Run("33 fast-forward push advances the remote ref", func(t *testing.T) {
+		fixture := trackedFixture(t)
+		local := fixture.Commit("local work", map[string]string{"c.txt": "c\n"})
+		if _, err := fixture.Runner.Execute(ctx, invocation(t, fixture, git.SyncPush)); err != nil {
+			t.Fatalf("push: %v", err)
+		}
+		if remote := remoteMain(fixture); remote != local {
+			t.Fatalf("remote = %s, want %s", remote, local)
+		}
+	})
+
+	t.Run("34 non-fast-forward push is rejected and never forced", func(t *testing.T) {
+		fixture := trackedFixture(t)
+		advanced := fixture.Commit("upstream advance", map[string]string{"b.txt": "b\n"})
+		fixture.Git("push", "-q", "origin", "main")
+		fixture.Git("reset", "-q", "--hard", "HEAD~1")
+		fixture.Commit("local work", map[string]string{"c.txt": "c\n"})
+		push := invocation(t, fixture, git.SyncPush)
+		for _, argument := range push.Args {
+			if strings.HasPrefix(argument, "-") || strings.HasPrefix(argument, "+") {
+				t.Fatalf("push must not force: %v", push.Args)
+			}
+		}
+		if _, err := fixture.Runner.Execute(ctx, push); err == nil {
+			t.Fatal("expected non-fast-forward push to be rejected")
+		}
+		if remote := remoteMain(fixture); remote != advanced {
+			t.Fatalf("remote moved to %s", remote)
+		}
+	})
+
+	t.Run("35 no upstream blocks pull and push before Git runs", func(t *testing.T) {
+		fixture := gittest.New(t)
+		fixture.Commit("base", map[string]string{"a.txt": "a\n"})
+		upstream, err := git.LoadUpstream(ctx, fixture.Runner, "main")
+		if err != nil || upstream != (git.Upstream{}) {
+			t.Fatalf("upstream = %+v err = %v", upstream, err)
+		}
+		for _, kind := range []git.SyncKind{git.SyncPull, git.SyncPush} {
+			if _, err := git.SyncInvocation(kind, upstream); !errors.Is(err, git.ErrNoUpstream) {
+				t.Fatalf("%v: expected ErrNoUpstream, got %v", kind, err)
+			}
+		}
+		fetch, err := git.SyncInvocation(git.SyncFetch, upstream)
+		if err != nil || strings.Join(fetch.Args, " ") != "fetch" {
+			t.Fatalf("fetch = %v err = %v", fetch.Args, err)
 		}
 	})
 }
