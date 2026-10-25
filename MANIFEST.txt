@@ -1,0 +1,14 @@
+GitFlow Claude handoff
+
+CLAUDE.md
+README.md
+prototype/index.html
+screens/SCREEN_SPECS.md
+screens/WALKTHROUGHS.md
+spec/00_PRODUCT_CONTRACT.md
+spec/01_KEYBOARD_AND_ACTIONS.md
+spec/02_GIT_SEMANTICS.md
+spec/03_WORKFLOWS.md
+spec/04_SCOPE_AND_OPEN_DECISIONS.md
+tests/ACCEPTANCE.md
+tests/SCENARIOS.md
