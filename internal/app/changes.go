@@ -104,7 +104,17 @@ func (c *changesScreen) targets(a *App) ([]git.FileChange, int) {
 	return targets, hidden
 }
 
+func (c *changesScreen) menuActions(a *App) []*Action {
+	if c.focusPanel == panelHeader {
+		return []*Action{a.registry.ByID("sync.pull"), a.registry.ByID("sync.push")}
+	}
+	return a.registry.InScope(ScopeChanges)
+}
+
 func (c *changesScreen) targetScope(a *App) string {
+	if c.focusPanel == panelHeader {
+		return "Target: current branch " + a.headLabel()
+	}
 	targets, hidden := c.targets(a)
 	if len(c.selected) == 0 {
 		if len(targets) == 0 {
@@ -323,6 +333,20 @@ func diffLines(diff git.FileDiff) []string {
 		lines = append(lines, styleMuted.Render("Binary file: no text diff"))
 	} else if len(diff.Hunks) == 0 && !diff.Empty() {
 		lines = append(lines, styleMuted.Render(strings.Join(diff.Header, " · ")))
+	}
+	return lines
+}
+
+func patchLines(diff git.FileDiff) []string {
+	var lines []string
+	for _, line := range diff.Header {
+		if line == "GIT binary patch" {
+			break
+		}
+		lines = append(lines, styleMuted.Render(line))
+	}
+	if diff.Binary || len(diff.Hunks) > 0 {
+		lines = append(lines, diffLines(diff)...)
 	}
 	return lines
 }

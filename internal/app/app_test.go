@@ -141,6 +141,29 @@ func (h *harness) confirm() {
 
 func (h *harness) head() string { return strings.TrimSpace(h.fixture.Git("rev-parse", "HEAD")) }
 
+func (h *harness) syncReviewAndExecute() {
+	h.t.Helper()
+	if _, ok := h.app.top().(*syncScreen); !ok {
+		h.t.Fatalf("S15 not open, top = %T", h.app.top())
+	}
+	h.press("tab", "enter", "tab", "enter")
+}
+
+func (h *harness) openHistoryOf(branch string) {
+	h.t.Helper()
+	h.palette("branch inspector")
+	branches := h.app.top().(*branchScreen)
+	for index, local := range branches.branches {
+		if local.Name == branch {
+			branches.cursor = index
+		}
+	}
+	h.press("enter")
+	if _, ok := h.app.top().(*historyScreen); !ok {
+		h.t.Fatalf("history of %s not open, top = %T", branch, h.app.top())
+	}
+}
+
 func conflictRepo(t *testing.T) (*gittest.Fixture, string) {
 	fixture := gittest.New(t)
 	fixture.Commit("base", map[string]string{"shared.txt": "one\nshared\nthree\n"})
@@ -177,6 +200,15 @@ func TestRegistryInvariants(t *testing.T) {
 	}
 	if _, err := NewRegistry([]Action{{ID: "one", Scope: ScopeConflict, Keys: []string{"n"}}}); err == nil {
 		t.Fatal("scope navigation key collision must be rejected")
+	}
+	if _, err := NewRegistry([]Action{{ID: "one", Scope: ScopeHistory, Keys: []string{"S"}}}); err == nil {
+		t.Fatal("S is global navigation (select all listed files) and must be reserved in every scope")
+	}
+	for _, sequence := range []string{"g h", "g l", "g p", "g f", "c f"} {
+		action, ok := registry.Lookup(ScopeCommitFiles, sequence)
+		if !ok || action.Scope != ScopeGlobal {
+			t.Fatalf("%s must resolve to a global action, got %+v", sequence, action)
+		}
 	}
 }
 
@@ -679,8 +711,10 @@ func TestBranchInspectorActions(t *testing.T) {
 	h := newHarness(t, fixture)
 	h.palette("branch inspector")
 	h.expectScreen("BRANCH INSPECTOR", "No upstream (ahead/behind unknown)", "Comparison base (independent of upstream): main")
-	h.press("a")
-	h.expectScreen("Push", "unavailable: No upstream: use Push and set upstream", "Pull", "unavailable: No upstream: set one first")
+	h.menuSelect("Pull")
+	h.expectScreen("REMOTE SYNC REVIEW", "No upstream")
+	h.syncReviewAndExecute()
+	h.expectScreen("Execute unavailable: No upstream")
 	h.press("esc")
 
 	h.menuSelect("Push and set upstream")
@@ -724,8 +758,12 @@ func TestBranchInspectorActions(t *testing.T) {
 	other.Commit("remote change", map[string]string{"r.txt": "r\n"})
 	other.Git("push", "-q", "origin", "main")
 	h.menuSelect("Fetch")
+	h.syncReviewAndExecute()
+	h.press("esc")
 	h.expectScreen("→ origin/main ↑0 ↓1")
 	h.menuSelect("Pull")
+	h.syncReviewAndExecute()
+	h.press("esc")
 	if fixture.ReadFile("r.txt") != "r\n" {
 		t.Fatal("pull did not bring remote change")
 	}
@@ -779,5 +817,223 @@ func TestSelectAllVisibleFiles(t *testing.T) {
 	h.press("tab", "enter")
 	if status := fixture.Git("status", "--porcelain"); status != "M  a.txt\nM  b.txt\nM  c.txt\n" {
 		t.Fatalf("s after S must stage all selected files, status:\n%s", status)
+	}
+}
+
+func selectiveRepo(t *testing.T) (*gittest.Fixture, string) {
+	fixture := gittest.New(t)
+	fixture.Commit("base", map[string]string{"a.txt": "a1\n", "b.txt": "b1\n", "c.txt": "c1\n"})
+	fixture.Git("switch", "-q", "-c", "source")
+	commit := fixture.Commit("three files", map[string]string{"a.txt": "a2\n", "b.txt": "b2\n", "c.txt": "c2\n"})
+	fixture.Git("switch", "-q", "main")
+	return fixture, commit
+}
+
+func TestGlobalHistoryShortcut(t *testing.T) {
+	fixture := gittest.New(t)
+	fixture.Commit("base", map[string]string{"a.txt": "a\n"})
+	h := newHarness(t, fixture)
+	h.expectScreen("g h History")
+	h.press("g", "h")
+	if h.app.top() != h.app.history {
+		t.Fatalf("g h must open S04, got %T", h.app.top())
+	}
+}
+
+func TestCommitFileInspectorSelection(t *testing.T) {
+	fixture, commit := selectiveRepo(t)
+	before := fixture.Snapshot()
+	h := newHarness(t, fixture)
+	h.openHistoryOf("source")
+	h.press(" ", "enter")
+	if _, ok := h.app.top().(*commitFilesScreen); !ok {
+		t.Fatalf("A06: Enter on a commit must open S13, got %T", h.app.top())
+	}
+	h.expectScreen("COMMIT INSPECTOR", commit, "three files", "parents: 1", "3 changed file(s)", "FILES IN COMMIT", "a.txt", "b.txt", "c.txt")
+	h.press(" ", "j", " ")
+	h.expectScreen("2 selected in this commit")
+	h.press("S")
+	h.expectScreen("3 selected in this commit")
+	h.press("S")
+	h.expectScreen("0 selected in this commit")
+	h.press(" ", "j", " ", "esc")
+	if len(h.app.commitSelection.order) != 1 || len(h.app.fileSelection.order) != 2 {
+		t.Fatalf("A06/A07: whole-commit %v and file %v selections must both persist", h.app.commitSelection.order, h.app.fileSelection.order)
+	}
+	h.expectScreen("Files: 2 selected in 1 commit(s)")
+	h.press("enter")
+	h.expectScreen("2 selected in this commit")
+	h.press("esc", "c", "p")
+	planner, ok := h.app.top().(*cherryPickScreen)
+	if !ok || len(planner.oids) != 1 || planner.oids[0] != commit {
+		t.Fatalf("S06 must receive whole commits only, got %+v", planner)
+	}
+	h.press("esc", "esc", "esc")
+	if fixture.Snapshot() != before {
+		t.Fatal("A12: S13 navigation mutated Git")
+	}
+}
+
+func TestSelectiveApplyFromInspector(t *testing.T) {
+	fixture, commit := selectiveRepo(t)
+	head := strings.TrimSpace(fixture.Git("rev-parse", "HEAD"))
+	before := fixture.Snapshot()
+	h := newHarness(t, fixture)
+	h.openHistoryOf("source")
+	h.press("enter", "c", "f")
+	h.expectScreen("APPLY FILES FROM COMMITS", "Focused file only", "a.txt")
+	h.press("esc", " ", "j", " ", "c", "f")
+	if _, ok := h.app.top().(*selectiveApplyScreen); !ok {
+		t.Fatalf("c f must open S14, got %T", h.app.top())
+	}
+	h.expectScreen("Selective patch application — not git cherry-pick", "Destination: main", "[1] "+commit[:7]+" a.txt", "[2] "+commit[:7]+" b.txt", "clean? yes", "Expected result: staged patches, no commit")
+	if strings.Contains(h.screen(), "c.txt") {
+		t.Fatal("S14 must list exactly the selected files")
+	}
+	h.press("esc", "esc", "esc")
+	if fixture.Snapshot() != before {
+		t.Fatal("A12: Esc from S13/S14 mutated Git")
+	}
+	h.press("enter", "c", "f")
+	h.menuSelect("Apply files to index and working tree")
+	h.confirm()
+	h.expectScreen("Applied 2 of 2 step(s)", "No commit was created")
+	if status := fixture.Git("status", "--porcelain"); status != "M  a.txt\nM  b.txt\n" {
+		t.Fatalf("A08: status = %q", status)
+	}
+	if strings.TrimSpace(fixture.Git("rev-parse", "HEAD")) != head || fixture.ReadFile("c.txt") != "c1\n" {
+		t.Fatal("A08: a commit was created or an unselected file changed")
+	}
+}
+
+func TestSelectiveApplyAcrossCommitsFailsClosed(t *testing.T) {
+	fixture := gittest.New(t)
+	fixture.Commit("base", map[string]string{"a.txt": "v1\n", "b.txt": "b1\n"})
+	fixture.Git("switch", "-q", "-c", "source")
+	first := fixture.Commit("first", map[string]string{"a.txt": "v2\n", "b.txt": "b2\n"})
+	second := fixture.Commit("second", map[string]string{"a.txt": "v3\n"})
+	fixture.Git("switch", "-q", "main")
+	fixture.Commit("main edits b", map[string]string{"b.txt": "main\n"})
+	before := fixture.Snapshot()
+	h := newHarness(t, fixture)
+	h.openHistoryOf("source")
+	h.press("j", "enter", " ", "j", " ", "esc", "k", "enter", " ", "c", "f")
+	h.expectScreen("[1] "+first[:7]+" a.txt", "[2] "+first[:7]+" b.txt", "[3] "+second[:7]+" a.txt", "a.txt is changed by steps 1, 3")
+	h.menuSelect("Apply files to index and working tree")
+	h.confirm()
+	h.expectScreen("Nothing was applied", "step 2")
+	if fixture.Snapshot() != before {
+		t.Fatal("A11: a failed preflight must leave the repository unchanged")
+	}
+	h.press("o")
+	h.expectScreen("No active operation")
+}
+
+func TestMergeCommitRequiresParentChoice(t *testing.T) {
+	fixture := gittest.New(t)
+	fixture.Commit("base", map[string]string{"a.txt": "a\n"})
+	fixture.Git("switch", "-q", "-c", "topic")
+	fixture.Commit("topic", map[string]string{"t.txt": "t\n"})
+	fixture.Git("switch", "-q", "main")
+	fixture.Commit("main", map[string]string{"m.txt": "m\n"})
+	fixture.Git("merge", "-q", "--no-ff", "-m", "merge", "topic")
+	h := newHarness(t, fixture)
+	h.press("g", "h", "enter")
+	dialog, ok := h.app.overlay.(*confirmOverlay)
+	if !ok || !strings.Contains(dialog.title, "parent") {
+		t.Fatalf("A10: a merge commit must ask for a parent, overlay = %+v", h.app.overlay)
+	}
+	h.press("esc")
+	if h.app.top() != h.app.history {
+		t.Fatal("cancelling the parent choice must stay in S04")
+	}
+	h.press("enter")
+	h.confirm()
+	h.expectScreen("COMMIT INSPECTOR", "parents: 2", "parent 1 of 2", "t.txt")
+	if strings.Contains(h.screen(), "m.txt") {
+		t.Fatal("files must be computed against the chosen parent only")
+	}
+}
+
+func TestSelectiveApplyBlockedDuringOperation(t *testing.T) {
+	fixture, topic := conflictRepo(t)
+	fixture.GitFails("cherry-pick", topic)
+	h := newHarness(t, fixture)
+	h.openHistoryOf("topic")
+	h.press("enter", " ", "c", "f")
+	h.expectScreen("APPLY FILES FROM COMMITS", "Execute unavailable: validate selective apply: cherry-pick: a Git operation is in progress")
+	h.press("o")
+	h.expectScreen("OPERATIONS · CHERRY-PICK PAUSED")
+}
+
+func TestRemoteSyncReview(t *testing.T) {
+	fixture := gittest.New(t)
+	remoteDir := fixture.BareRemote("origin")
+	fixture.Commit("base", map[string]string{"a.txt": "a\n"})
+	fixture.Git("push", "-q", "-u", "origin", "main")
+	other := gittest.New(t)
+	other.Git("remote", "add", "origin", remoteDir)
+	other.Git("fetch", "-q", "origin")
+	other.Git("switch", "-q", "-c", "main", "origin/main")
+	remoteChange := other.Commit("remote change", map[string]string{"r.txt": "r\n"})
+	other.Git("push", "-q", "origin", "main")
+	before := fixture.Snapshot()
+	h := newHarness(t, fixture)
+
+	h.press("g", "l")
+	shortcutView := h.screen()
+	h.expectScreen("REMOTE SYNC REVIEW", "Pull (fast-forward-only)", "Local branch: main", "Remote: origin", "Upstream: origin/main",
+		"from local refs; fetch freshness unknown", "independent metric, not the pull/push target", "git pull --ff-only", "Pending; no command executed")
+	h.press("esc")
+	h.press("shift+tab", "a")
+	h.expectScreen("Pull", "Push")
+	h.press("esc")
+	h.menuSelect("Pull")
+	if h.screen() != shortcutView {
+		t.Fatalf("A01: menu and shortcut must open equivalent reviews\nshortcut:\n%s\nmenu:\n%s", shortcutView, h.screen())
+	}
+	h.press("tab", "tab", "enter")
+	h.expectScreen("Execute unavailable: choose Review first")
+	h.press("tab", "enter")
+	if fixture.Snapshot() != before {
+		t.Fatal("A12: Review and Cancel must not mutate Git")
+	}
+	if h.app.top() != h.app.changes {
+		t.Fatalf("Cancel must close S15, got %T", h.app.top())
+	}
+
+	h.press("g", "l")
+	h.syncReviewAndExecute()
+	if head := strings.TrimSpace(fixture.Git("rev-parse", "HEAD")); head != remoteChange {
+		t.Fatalf("A03: ff-only pull should reach %s, HEAD = %s", remoteChange, head)
+	}
+	h.expectScreen("Done")
+	h.press("esc")
+	local := fixture.Commit("local work", map[string]string{"l.txt": "l\n"})
+	h.run(h.app.refresh())
+	h.press("g", "p")
+	h.expectScreen("Push (ordinary, never forced)", "git push origin HEAD:refs/heads/main")
+	h.syncReviewAndExecute()
+	if remote := strings.Fields(fixture.Git("ls-remote", "origin", "refs/heads/main"))[0]; remote != local {
+		t.Fatalf("A04: remote = %s, want %s", remote, local)
+	}
+	h.press("esc", "g", "f")
+	h.expectScreen("Fetch", "git fetch origin")
+}
+
+func TestRemoteSyncWithoutUpstream(t *testing.T) {
+	fixture := gittest.New(t)
+	fixture.Commit("base", map[string]string{"a.txt": "a\n"})
+	before := fixture.Snapshot()
+	h := newHarness(t, fixture)
+	for _, keys := range [][]string{{"g", "l"}, {"g", "p"}} {
+		h.press(keys...)
+		h.expectScreen("No upstream", "Set upstream")
+		h.syncReviewAndExecute()
+		h.expectScreen("Execute unavailable: No upstream")
+		h.press("esc")
+	}
+	if fixture.Snapshot() != before {
+		t.Fatal("A05: no-upstream pull/push must not touch Git")
 	}
 }

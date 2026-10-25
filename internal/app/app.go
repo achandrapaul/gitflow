@@ -58,6 +58,10 @@ type statusListener interface {
 	statusChanged(a *App) tea.Cmd
 }
 
+type menuProvider interface {
+	menuActions(a *App) []*Action
+}
+
 type overlay interface {
 	handleKey(a *App, msg tea.KeyMsg) tea.Cmd
 	view(a *App, width, height int) string
@@ -94,7 +98,8 @@ type App struct {
 
 	changes         *changesScreen
 	history         *historyScreen
-	commitSelection *commitSelection
+	commitSelection *orderedSelection[string]
+	fileSelection   *orderedSelection[fileKey]
 	drafts          map[composeMode]draft
 	stack           []screen
 	overlay         overlay
@@ -117,7 +122,8 @@ func New(ctx context.Context, repo git.Repository, runner *git.Runner, terminal 
 		registry:        registry,
 		width:           defaultWidth,
 		height:          defaultHeight,
-		commitSelection: &commitSelection{selected: map[string]bool{}},
+		commitSelection: &orderedSelection[string]{selected: map[string]bool{}},
+		fileSelection:   &orderedSelection[fileKey]{selected: map[fileKey]bool{}},
 		drafts:          map[composeMode]draft{},
 	}
 	search := newTextInput()
@@ -323,11 +329,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.overlay = &helpOverlay{scope: current.scope()}
 		case "a":
 			menu := &menuOverlay{title: current.menuTitle(a), actions: a.registry.InScope(current.scope())}
+			if provider, ok := current.(menuProvider); ok {
+				menu.actions = provider.menuActions(a)
+			}
 			if scoped, ok := current.(interface{ targetScope(a *App) string }); ok {
 				menu.target = scoped.targetScope(a)
 			}
 			a.overlay = menu
-		case " ":
+		case " ", "S":
 			a.notice = "Nothing selectable here"
 		}
 		return a, nil
@@ -444,6 +453,9 @@ func (a *App) View() string {
 		second.WriteString(" · " + styleConflict.Render("operation: "+strings.ToUpper(a.operation.Kind.Name())+" PAUSED (o)"))
 	default:
 		second.WriteString(" · operation: none")
+	}
+	if current == a.changes {
+		second.WriteString(styleMuted.Render(" · g h History"))
 	}
 	marker := "  "
 	if headerFocused {

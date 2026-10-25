@@ -382,8 +382,8 @@ func TestSelectiveApply(t *testing.T) {
 		first := fixture.Commit("v2", map[string]string{"a.txt": "v2\n"})
 		second := fixture.Commit("v3", map[string]string{"a.txt": "v3\n"})
 		fixture.Git("switch", "-q", "main")
-		firstStep := commitPatchSteps(t, fixture, first+"~1", first, "a.txt")
-		secondStep := commitPatchSteps(t, fixture, second+"~1", second, "a.txt")
+		firstStep := commitPatchSteps(t, fixture, strings.TrimSpace(fixture.Git("rev-parse", first+"~1")), first, "a.txt")
+		secondStep := commitPatchSteps(t, fixture, first, second, "a.txt")
 		reversed := append(append([]git.PatchStep{}, secondStep...), firstStep...)
 		if err := git.PreflightPatches(ctx, fixture.Runner, filepath.Join(fixture.Dir, ".git"), reversed); err == nil || !strings.Contains(err.Error(), "step 1") {
 			t.Fatalf("expected reversed order to fail at step 1, got %v", err)
@@ -396,18 +396,29 @@ func TestSelectiveApply(t *testing.T) {
 
 	t.Run("40 add delete rename binary mode symlink and unusual paths apply correctly", func(t *testing.T) {
 		fixture := gittest.New(t)
-		fixture.Commit("base", map[string]string{"old.txt": "old\n", "r.txt": "rename me\nline two\nline three\n", "bin.dat": "\x00\x01\x02", "run.sh": "echo hi\n"})
+		fixture.Commit("base", map[string]string{"old.txt": "old\n", "r.txt": "rename me\nline two\nline three\n", "bin.dat": "\x00\x01\x02", "run.sh": "echo hi\n", "tc.txt": "regular\n"})
 		fixture.Git("switch", "-q", "-c", "source")
 		parent := strings.TrimSpace(fixture.Git("rev-parse", "HEAD"))
 		fixture.Write("new file ü.txt", "new\n")
 		fixture.Write("bin.dat", "\x00\x09\x08\x07")
 		fixture.Git("rm", "-q", "--", "old.txt")
+		if err := os.Mkdir(filepath.Join(fixture.Dir, "moved"), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
 		fixture.Git("mv", "--", "r.txt", "moved/r2.txt")
-		fixture.Git("update-index", "--chmod=+x", "--", "run.sh")
+		if err := os.Chmod(filepath.Join(fixture.Dir, "run.sh"), 0o755); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+		fixture.Git("add", "--", "run.sh")
 		if err := os.Symlink("run.sh", filepath.Join(fixture.Dir, "link")); err != nil {
 			t.Fatalf("symlink: %v", err)
 		}
-		commit := fixture.Commit("all kinds", map[string]string{"new file ü.txt": "new\n", "bin.dat": "\x00\x09\x08\x07", "link": ""})
+		os.Remove(filepath.Join(fixture.Dir, "tc.txt"))
+		if err := os.Symlink("run.sh", filepath.Join(fixture.Dir, "tc.txt")); err != nil {
+			t.Fatalf("typechange symlink: %v", err)
+		}
+		fixture.Git("add", "--", "link", "tc.txt")
+		commit := fixture.Commit("all kinds", map[string]string{"new file ü.txt": "new\n", "bin.dat": "\x00\x09\x08\x07"})
 		fixture.Git("switch", "-q", "main")
 
 		files, err := git.ListCommitFiles(ctx, fixture.Runner, parent, commit)
@@ -418,13 +429,13 @@ func TestSelectiveApply(t *testing.T) {
 		for _, file := range files {
 			statuses[file.Path] = string(file.Status) + " " + file.OrigPath + " " + file.NewMode
 		}
-		expected := map[string]string{"new file ü.txt": "A  100644", "old.txt": "D  000000", "moved/r2.txt": "R r.txt 100644", "bin.dat": "M  100644", "run.sh": "M  100755", "link": "A  120000"}
+		expected := map[string]string{"new file ü.txt": "A  100644", "old.txt": "D  000000", "moved/r2.txt": "R r.txt 100644", "bin.dat": "M  100644", "run.sh": "M  100755", "link": "A  120000", "tc.txt": "T  120000"}
 		for path, want := range expected {
 			if statuses[path] != want {
 				t.Fatalf("%s = %q, want %q (all %+v)", path, statuses[path], want, statuses)
 			}
 		}
-		applyAll(t, fixture, commitPatchSteps(t, fixture, parent, commit, "new file ü.txt", "old.txt", "moved/r2.txt", "bin.dat", "run.sh", "link"))
+		applyAll(t, fixture, commitPatchSteps(t, fixture, parent, commit, "new file ü.txt", "old.txt", "moved/r2.txt", "bin.dat", "run.sh", "link", "tc.txt"))
 		if fixture.ReadFile("new file ü.txt") != "new\n" || fixture.ReadFile("bin.dat") != "\x00\x09\x08\x07" || fixture.ReadFile("moved/r2.txt") != "rename me\nline two\nline three\n" {
 			t.Fatal("content not applied")
 		}
@@ -436,6 +447,9 @@ func TestSelectiveApply(t *testing.T) {
 		}
 		if target, err := os.Readlink(filepath.Join(fixture.Dir, "link")); err != nil || target != "run.sh" {
 			t.Fatalf("link = %q err = %v", target, err)
+		}
+		if target, err := os.Readlink(filepath.Join(fixture.Dir, "tc.txt")); err != nil || target != "run.sh" {
+			t.Fatalf("typechange tc.txt = %q err = %v", target, err)
 		}
 		stage := fixture.Git("ls-files", "-s", "--", "run.sh", "link")
 		if !strings.Contains(stage, "100755") || !strings.Contains(stage, "120000") {

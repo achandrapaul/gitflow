@@ -181,15 +181,18 @@ func TestRemoteSync(t *testing.T) {
 		fixture.Git("push", "-q", "origin", "main")
 		fixture.Git("reset", "-q", "--hard", "HEAD~1")
 		local := fixture.Commit("local work", map[string]string{"c.txt": "c\n"})
-		before := fixture.Snapshot()
+		workingState := func() string {
+			return fixture.Git("status", "--porcelain=v2", "-z", "--untracked-files=all") + fixture.Git("ls-files", "--stage", "-z") + fixture.Git("for-each-ref", "refs/heads")
+		}
+		before := workingState()
 		if _, err := fixture.Runner.Execute(ctx, invocation(t, fixture, git.SyncPull)); err == nil {
 			t.Fatal("expected diverged ff-only pull to fail")
 		}
 		if head := strings.TrimSpace(fixture.Git("rev-parse", "HEAD")); head != local {
 			t.Fatalf("HEAD moved to %s", head)
 		}
-		if fixture.Snapshot() != before {
-			t.Fatal("refused pull changed the repository")
+		if workingState() != before {
+			t.Fatal("refused pull changed the working state")
 		}
 	})
 

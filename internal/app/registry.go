@@ -11,17 +11,20 @@ import (
 type Scope string
 
 const (
-	ScopeGlobal     Scope = "global"
-	ScopeChanges    Scope = "changes"
-	ScopeDiff       Scope = "diff"
-	ScopeComposer   Scope = "composer"
-	ScopeHistory    Scope = "history"
-	ScopeViewer     Scope = "viewer"
-	ScopeCherryPick Scope = "cherry-pick"
-	ScopeRebase     Scope = "rebase"
-	ScopeOperation  Scope = "operation"
-	ScopeConflict   Scope = "conflict"
-	ScopeBranch     Scope = "branch"
+	ScopeGlobal         Scope = "global"
+	ScopeChanges        Scope = "changes"
+	ScopeDiff           Scope = "diff"
+	ScopeComposer       Scope = "composer"
+	ScopeHistory        Scope = "history"
+	ScopeViewer         Scope = "viewer"
+	ScopeCherryPick     Scope = "cherry-pick"
+	ScopeRebase         Scope = "rebase"
+	ScopeOperation      Scope = "operation"
+	ScopeConflict       Scope = "conflict"
+	ScopeBranch         Scope = "branch"
+	ScopeCommitFiles    Scope = "commit-files"
+	ScopeSelectiveApply Scope = "selective-apply"
+	ScopeSync           Scope = "sync"
 )
 
 const busyReason = "another Git command is running"
@@ -29,11 +32,11 @@ const busyReason = "another Git command is running"
 var navigationKeys = map[string]bool{
 	"enter": true, " ": true, "esc": true, "j": true, "k": true, "up": true, "down": true,
 	"h": true, "l": true, "left": true, "right": true, "tab": true, "shift+tab": true,
-	"a": true, ":": true, "?": true, "/": true, "g": true, "G": true, "ctrl+d": true, "ctrl+u": true, "q": true,
+	"a": true, ":": true, "?": true, "/": true, "g": true, "G": true, "ctrl+d": true, "ctrl+u": true, "q": true, "S": true,
 }
 
 var scopeNavigationKeys = map[Scope][]string{
-	ScopeChanges:  {"1", "2", "3", "4", "S"},
+	ScopeChanges:  {"1", "2", "3", "4"},
 	ScopeConflict: {"n", "N"},
 }
 

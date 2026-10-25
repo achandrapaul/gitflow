@@ -13,30 +13,46 @@ import (
 )
 
 const (
-	prefetchMargin   = 20
-	graphLaneLimit   = 8
-	historyListShare = 55
-	historyChrome    = 4
+	prefetchMargin       = 20
+	graphLaneLimit       = 8
+	historyListShare     = 55
+	historyChrome        = 4
+	commitFilesListShare = 40
+	commitFilesHeader    = 2
 )
 
-type commitSelection struct {
-	order    []string
-	selected map[string]bool
+type orderedSelection[K comparable] struct {
+	order    []K
+	selected map[K]bool
 }
 
-func (s *commitSelection) toggle(oid string) {
-	if s.selected[oid] {
-		delete(s.selected, oid)
-		for index, selectedOID := range s.order {
-			if selectedOID == oid {
+func (s *orderedSelection[K]) toggle(key K) {
+	if s.selected[key] {
+		delete(s.selected, key)
+		for index, selectedKey := range s.order {
+			if selectedKey == key {
 				s.order = append(s.order[:index:index], s.order[index+1:]...)
 				break
 			}
 		}
 		return
 	}
-	s.selected[oid] = true
-	s.order = append(s.order, oid)
+	s.selected[key] = true
+	s.order = append(s.order, key)
+}
+
+type fileKey struct {
+	commitOID string
+	parentOID string
+	file      git.CommitFile
+}
+
+func (a *App) selectedFileCommits() int {
+	commits := map[string]bool{}
+	for _, key := range a.fileSelection.order {
+		commits[key.commitOID] = true
+	}
+	return len(commits)
 }
 
 type historyScreen struct {
@@ -328,10 +344,21 @@ func (h *historyScreen) handleKey(a *App, key string) (tea.Cmd, bool) {
 		if !ok {
 			return nil, true
 		}
-		runner := a.runner
-		return a.openViewer("commit "+commit.Short(), func(ctx context.Context) (string, error) {
-			return git.ShowCommit(ctx, runner, commit.OID)
-		}), true
+		if !commit.IsMerge() {
+			return a.openScreen(&commitFilesScreen{commit: commit, parentIndex: 0, diffs: map[string]git.FileDiff{}}), true
+		}
+		buttons := []confirmButton{{label: "Cancel"}}
+		for parentIndex, parent := range commit.Parents {
+			buttons = append(buttons, confirmButton{label: fmt.Sprintf("Parent %d %s", parentIndex+1, shortOID(parent)), run: func(a *App) tea.Cmd {
+				return a.openScreen(&commitFilesScreen{commit: commit, parentIndex: parentIndex, diffs: map[string]git.FileDiff{}})
+			}})
+		}
+		a.overlay = &confirmOverlay{
+			title:   "Choose the parent to compare merge " + commit.Short() + " against",
+			lines:   []string{"A merge commit has no single change set. Files and patches are computed against the parent you choose.", "GitFlow never guesses the parent."},
+			buttons: buttons,
+		}
+		return nil, true
 	case "/":
 		h.searching = true
 		h.search.SetValue(h.filter)
@@ -387,6 +414,9 @@ func (h *historyScreen) view(a *App, width, height int) string {
 		body = append(body, styleMuted.Render("No commits"))
 	}
 	body = append(body, "", fmt.Sprintf("Selected: %d (%d hidden) · %d loaded · %s", len(a.commitSelection.order), h.hiddenSelected(a), len(h.commits), progress))
+	if count := len(a.fileSelection.order); count > 0 {
+		body = append(body, styleAccent.Render(fmt.Sprintf("Files: %d selected in %d commit(s) · c f Apply files", count, a.selectedFileCommits())))
+	}
 	listPanel := panel("HISTORY · "+h.ref, body, listWidth, listHeight, true)
 
 	var detail []string
@@ -397,7 +427,7 @@ func (h *historyScreen) view(a *App, width, height int) string {
 	if width < stackedLayoutBelow {
 		detailHeight = height - listHeight
 	}
-	detailPanel := panel("COMMIT DETAILS · Enter opens", detail, detailWidth, detailHeight, false)
+	detailPanel := panel("COMMIT DETAILS · Enter opens files", detail, detailWidth, detailHeight, false)
 	if width < stackedLayoutBelow {
 		return lipgloss.JoinVertical(lipgloss.Left, listPanel, detailPanel)
 	}
@@ -405,7 +435,235 @@ func (h *historyScreen) view(a *App, width, height int) string {
 }
 
 func (h *historyScreen) footer() string {
-	return "j/k Move  Space Select  Enter Open  / Filter  c p Cherry-pick  r i Rebase onto focused  d c Compare  a Actions  Esc Back"
+	return "j/k Move  Space Select  Enter Files  / Filter  c p Cherry-pick  c f Apply files  r i Rebase onto focused  d c Compare  a Actions  Esc Back"
+}
+
+func (h *historyScreen) menuActions(a *App) []*Action {
+	actions := a.registry.InScope(ScopeHistory)
+	if len(a.fileSelection.order) > 0 {
+		actions = append(actions, a.registry.ByID("files.apply"))
+	}
+	return actions
+}
+
+type commitFilesScreen struct {
+	commit      git.Commit
+	parentIndex int
+	parentOID   string
+	files       []git.CommitFile
+	loaded      bool
+	err         error
+	cursor      int
+	offset      int
+	diffFocused bool
+	expanded    bool
+	diffOffset  int
+	diffs       map[string]git.FileDiff
+}
+
+func (c *commitFilesScreen) scope() Scope { return ScopeCommitFiles }
+
+func (c *commitFilesScreen) opened(a *App) tea.Cmd {
+	runner, commit, parentIndex := a.runner, c.commit, c.parentIndex
+	return a.load(func(ctx context.Context) func(a *App) tea.Cmd {
+		var parent string
+		var err error
+		if len(commit.Parents) == 0 {
+			parent, err = git.EmptyTreeOID(ctx, runner)
+		} else {
+			parent = commit.Parents[parentIndex]
+		}
+		var files []git.CommitFile
+		if err == nil {
+			files, err = git.ListCommitFiles(ctx, runner, parent, commit.OID)
+		}
+		return func(a *App) tea.Cmd {
+			c.parentOID, c.files, c.err, c.loaded = parent, files, err, true
+			return c.requestDiff(a)
+		}
+	})
+}
+
+func (c *commitFilesScreen) focused() (git.CommitFile, bool) {
+	if c.cursor < 0 || c.cursor >= len(c.files) {
+		return git.CommitFile{}, false
+	}
+	return c.files[c.cursor], true
+}
+
+func (c *commitFilesScreen) key(file git.CommitFile) fileKey {
+	return fileKey{commitOID: c.commit.OID, parentOID: c.parentOID, file: file}
+}
+
+func (c *commitFilesScreen) selectedHere(a *App) int {
+	count := 0
+	for _, file := range c.files {
+		if a.fileSelection.selected[c.key(file)] {
+			count++
+		}
+	}
+	return count
+}
+
+func (c *commitFilesScreen) requestDiff(a *App) tea.Cmd {
+	file, ok := c.focused()
+	if !ok {
+		return nil
+	}
+	if _, cached := c.diffs[file.Path]; cached {
+		return nil
+	}
+	c.diffs[file.Path] = git.FileDiff{}
+	runner, parent, commit := a.runner, c.parentOID, c.commit.OID
+	return a.load(func(ctx context.Context) func(a *App) tea.Cmd {
+		patch, err := git.CommitFilePatch(ctx, runner, parent, commit, file)
+		var diff git.FileDiff
+		if err == nil {
+			diff, err = git.ParseDiff(patch)
+		}
+		return func(a *App) tea.Cmd {
+			if err != nil {
+				diff = git.FileDiff{Header: []string{err.Error()}}
+			}
+			c.diffs[file.Path] = diff
+			return nil
+		}
+	})
+}
+
+func (c *commitFilesScreen) handleKey(a *App, key string) (tea.Cmd, bool) {
+	switch key {
+	case "tab", "shift+tab":
+		c.diffFocused = !c.diffFocused
+		return nil, true
+	case "enter":
+		c.expanded = !c.expanded
+		c.diffFocused = c.expanded
+		return nil, true
+	}
+	if c.diffFocused {
+		switch key {
+		case "j", "down":
+			c.diffOffset++
+			return nil, true
+		case "k", "up":
+			c.diffOffset = max(c.diffOffset-1, 0)
+			return nil, true
+		}
+		return nil, false
+	}
+	if next, moved := moveCursor(key, c.cursor, len(c.files), a.height-historyChrome); moved {
+		c.cursor, c.diffOffset = next, 0
+		return c.requestDiff(a), true
+	}
+	switch key {
+	case " ":
+		file, ok := c.focused()
+		if !ok {
+			a.notice = "No file to select"
+			return nil, true
+		}
+		a.fileSelection.toggle(c.key(file))
+		return nil, true
+	case "S":
+		if len(c.files) == 0 {
+			a.notice = "No files to select"
+			return nil, true
+		}
+		allSelected := c.selectedHere(a) == len(c.files)
+		for _, file := range c.files {
+			if a.fileSelection.selected[c.key(file)] == allSelected {
+				a.fileSelection.toggle(c.key(file))
+			}
+		}
+		return nil, true
+	}
+	return nil, false
+}
+
+func (c *commitFilesScreen) parentLabel() string {
+	switch {
+	case len(c.commit.Parents) == 0:
+		return "empty tree (root commit)"
+	case len(c.commit.Parents) == 1:
+		return shortOID(c.parentOID)
+	}
+	return fmt.Sprintf("parent %d of %d %s", c.parentIndex+1, len(c.commit.Parents), shortOID(c.parentOID))
+}
+
+func (c *commitFilesScreen) view(a *App, width, height int) string {
+	header := []string{
+		fmt.Sprintf("commit %s · %s %s", c.commit.OID, c.commit.Short(), c.commit.Subject),
+		fmt.Sprintf("Author: %s %s · parents: %d · compared against: %s · %d changed file(s)", c.commit.Author, c.commit.Date, len(c.commit.Parents), c.parentLabel(), len(c.files)),
+	}
+	headerPanel := panel("COMMIT INSPECTOR", header, width, len(header)+panelBorderSize+1, false)
+	bodyHeight := max(height-lipgloss.Height(headerPanel), commitFilesHeader+panelBorderSize)
+
+	body := []string{fmt.Sprintf("%d selected in this commit · %d in %d commit(s) overall", c.selectedHere(a), len(a.fileSelection.order), a.selectedFileCommits())}
+	switch {
+	case !c.loaded:
+		body = append(body, styleMuted.Render("Loading…"))
+	case c.err != nil:
+		body = append(body, styleError.Render(c.err.Error()))
+	case len(c.files) == 0:
+		body = append(body, styleMuted.Render("No file changes against this parent"))
+	}
+	rows := make([]string, len(c.files))
+	for index, file := range c.files {
+		mark := "[ ]"
+		if a.fileSelection.selected[c.key(file)] {
+			mark = styleAccent.Render("[x]")
+		}
+		path := displayPath(file.Path)
+		if file.OrigPath != "" {
+			path = displayPath(file.OrigPath) + " → " + path
+		}
+		row := fmt.Sprintf("%s %c %s", mark, file.Status, path)
+		if reason := file.UnsupportedReason(); reason != "" {
+			row += " " + styleWarning.Render("("+reason+")")
+		}
+		rows[index] = row
+	}
+	listWidth := width * commitFilesListShare / percent
+	rendered, offset := renderRows(rows, c.cursor, c.offset, bodyHeight-panelBorderSize-len(body)-1, !c.diffFocused)
+	c.offset = offset
+	listPanel := panel("FILES IN COMMIT", append(body, rendered...), listWidth, bodyHeight, !c.diffFocused)
+
+	diffTitle := "COMMIT PATCH PREVIEW"
+	var diffBody []string
+	if file, ok := c.focused(); ok {
+		diffTitle += " · " + displayPath(file.Path)
+		diffBody = append([]string{styleMuted.Render("diff " + c.parentLabel() + " → " + c.commit.Short())}, patchLines(c.diffs[file.Path])...)
+		c.diffOffset = min(c.diffOffset, max(len(diffBody)-1, 0))
+		diffBody = diffBody[c.diffOffset:]
+	}
+	if c.expanded {
+		return lipgloss.JoinVertical(lipgloss.Left, headerPanel, panel(diffTitle, diffBody, width, bodyHeight, true))
+	}
+	diffPanel := panel(diffTitle, diffBody, width-listWidth, bodyHeight, c.diffFocused)
+	return lipgloss.JoinVertical(lipgloss.Left, headerPanel, lipgloss.JoinHorizontal(lipgloss.Top, listPanel, diffPanel))
+}
+
+func (c *commitFilesScreen) footer() string {
+	return "j/k Move  Space Select file  S Select all  Enter Expand diff  Tab Panel  c f Apply selected files  a Actions  Esc Back"
+}
+
+func (c *commitFilesScreen) menuTitle(a *App) string {
+	return fmt.Sprintf("Actions for files in %s (%d selected overall)", c.commit.Short(), len(a.fileSelection.order))
+}
+
+func (c *commitFilesScreen) targetScope(a *App) string {
+	if len(a.fileSelection.order) > 0 {
+		return fmt.Sprintf("Targets: %d selected file(s) in %d commit(s)", len(a.fileSelection.order), a.selectedFileCommits())
+	}
+	if file, ok := c.focused(); ok {
+		return "Target: focused file only " + displayPath(file.Path)
+	}
+	return "No file focused"
+}
+
+func (c *commitFilesScreen) menuActions(a *App) []*Action {
+	return append(a.registry.InScope(ScopeCommitFiles), a.registry.ByID("files.apply"))
 }
 
 type viewerScreen struct {

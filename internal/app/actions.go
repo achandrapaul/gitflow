@@ -138,6 +138,12 @@ func actionDefinitions() []Action {
 	rebase := func(a *App) *rebaseScreen { return a.top().(*rebaseScreen) }
 	conflict := func(a *App) *conflictScreen { return a.top().(*conflictScreen) }
 	branches := func(a *App) *branchScreen { return a.top().(*branchScreen) }
+	selectiveApply := func(a *App) *selectiveApplyScreen { return a.top().(*selectiveApplyScreen) }
+	sync := func(a *App) *syncScreen { return a.top().(*syncScreen) }
+	openSync := func(id, title, key string, kind git.SyncKind) Action {
+		return Action{ID: id, Title: title, Scope: ScopeGlobal, Keys: []string{key},
+			Run: func(a *App) tea.Cmd { return a.openScreen(&syncScreen{kind: kind, focus: syncCancel}) }}
+	}
 	history := func(a *App) *historyScreen { return a.top().(*historyScreen) }
 	rebaseAction := func(id, title, key string, action git.TodoAction) Action {
 		return Action{ID: id, Title: title, Scope: ScopeRebase, Keys: []string{key}, Run: func(a *App) tea.Cmd { return rebase(a).setAction(action) }}
@@ -166,7 +172,7 @@ func actionDefinitions() []Action {
 				}
 				return nil
 			}},
-		{ID: "global.history", Title: "Open commit history", Scope: ScopeGlobal,
+		{ID: "global.history", Title: "Open commit history", Scope: ScopeGlobal, Keys: []string{"g h"},
 			Run: func(a *App) tea.Cmd {
 				if a.history == nil {
 					a.history = newHistoryScreen("HEAD")
@@ -175,6 +181,32 @@ func actionDefinitions() []Action {
 			}},
 		{ID: "global.branch", Title: "Open branch inspector", Scope: ScopeGlobal,
 			Run: func(a *App) tea.Cmd { return a.openScreen(newBranchScreen()) }},
+		openSync("sync.pull", "Pull", "g l", git.SyncPull),
+		openSync("sync.push", "Push", "g p", git.SyncPush),
+		openSync("sync.fetch", "Fetch", "g f", git.SyncFetch),
+		{ID: "files.apply", Title: "Apply selected files to working tree", Scope: ScopeGlobal, Keys: []string{"c f"},
+			Available: func(a *App) string {
+				inspector, inInspector := a.top().(*commitFilesScreen)
+				_, inHistory := a.top().(*historyScreen)
+				switch {
+				case len(a.fileSelection.order) > 0 && (inInspector || inHistory):
+					return ""
+				case inInspector:
+					if _, ok := inspector.focused(); !ok {
+						return "no file focused or selected"
+					}
+					return ""
+				}
+				return "select files in a commit first (Enter on a history commit)"
+			},
+			Run: func(a *App) tea.Cmd {
+				if len(a.fileSelection.order) > 0 {
+					return a.openScreen(newSelectiveApplyScreen(a, append([]fileKey{}, a.fileSelection.order...), false))
+				}
+				inspector := a.top().(*commitFilesScreen)
+				file, _ := inspector.focused()
+				return a.openScreen(newSelectiveApplyScreen(a, []fileKey{inspector.key(file)}, true))
+			}},
 
 		{ID: "changes.stage", Title: "Stage", Scope: ScopeChanges, Keys: []string{"s"}, Mutates: true,
 			Available: func(a *App) string { _, _, reason := a.changeTargets(git.FileChange.Unstaged); return reason },
@@ -394,30 +426,20 @@ func actionDefinitions() []Action {
 			Available: func(a *App) string { return conflict(a).resolveUnavailable() },
 			Run:       func(a *App) tea.Cmd { return conflict(a).markResolved(a) }},
 
-		{ID: "br.fetch", Title: "Fetch", Scope: ScopeBranch, Mutates: true,
-			Run: func(a *App) tea.Cmd { return a.gitHandoff("Fetch", git.Invocation{Args: []string{"fetch"}}, nil) }},
-		{ID: "br.pull", Title: "Pull", Scope: ScopeBranch, Mutates: true,
+		{ID: "sa.preview", Title: "Review focused step patch", Scope: ScopeSelectiveApply,
 			Available: func(a *App) string {
-				if reason := notDetached(a); reason != "" {
-					return reason
-				}
-				if a.status.Branch.Upstream == "" {
-					return "No upstream: set one first"
+				if view := selectiveApply(a); view.loading || view.cursor >= len(view.steps) {
+					return "patches are loading"
 				}
 				return ""
 			},
-			Run: func(a *App) tea.Cmd { return a.gitHandoff("Pull", git.Invocation{Args: []string{"pull"}}, nil) }},
-		{ID: "br.push", Title: "Push", Scope: ScopeBranch, Mutates: true,
-			Available: func(a *App) string {
-				if reason := notDetached(a); reason != "" {
-					return reason
-				}
-				if a.status.Branch.Upstream == "" {
-					return "No upstream: use Push and set upstream"
-				}
-				return ""
-			},
-			Run: func(a *App) tea.Cmd { return a.gitHandoff("Push", git.Invocation{Args: []string{"push"}}, nil) }},
+			Run: func(a *App) tea.Cmd { return selectiveApply(a).preview(a) }},
+		{ID: "sa.execute", Title: "Apply files to index and working tree", Scope: ScopeSelectiveApply, Mutates: true,
+			Available: func(a *App) string { return selectiveApply(a).executeUnavailable(a) },
+			Run:       func(a *App) tea.Cmd { return selectiveApply(a).execute(a) }},
+		{ID: "sync.execute", Title: "Execute", Scope: ScopeSync, Mutates: true,
+			Available: func(a *App) string { return sync(a).executeUnavailable(a) },
+			Run:       func(a *App) tea.Cmd { return sync(a).execute(a) }},
 		{ID: "br.pushUpstream", Title: "Push and set upstream", Scope: ScopeBranch, Mutates: true,
 			Available: func(a *App) string {
 				if reason := notDetached(a); reason != "" {

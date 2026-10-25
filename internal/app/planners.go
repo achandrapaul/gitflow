@@ -551,3 +551,234 @@ func (r *rebaseScreen) footer() string {
 }
 
 func (r *rebaseScreen) menuTitle(a *App) string { return "Actions for rebase plan" }
+
+type selectiveApplyScreen struct {
+	keys        []fileKey
+	focusedOnly bool
+	steps       []git.PatchStep
+	loading     bool
+	err         error
+	target      string
+	headOID     string
+	cursor      int
+	offset      int
+	invalidated string
+	completed   []string
+}
+
+func newSelectiveApplyScreen(a *App, keys []fileKey, focusedOnly bool) *selectiveApplyScreen {
+	var commitOrder []string
+	byCommit := map[string][]fileKey{}
+	for _, key := range keys {
+		if _, seen := byCommit[key.commitOID]; !seen {
+			commitOrder = append(commitOrder, key.commitOID)
+		}
+		byCommit[key.commitOID] = append(byCommit[key.commitOID], key)
+	}
+	var ordered []fileKey
+	for _, commitOID := range commitOrder {
+		ordered = append(ordered, byCommit[commitOID]...)
+	}
+	return &selectiveApplyScreen{keys: ordered, focusedOnly: focusedOnly, loading: true, target: a.headLabel(), headOID: a.status.Branch.OID}
+}
+
+func (s *selectiveApplyScreen) scope() Scope { return ScopeSelectiveApply }
+
+func (s *selectiveApplyScreen) opened(a *App) tea.Cmd {
+	runner, keys := a.runner, s.keys
+	return a.load(func(ctx context.Context) func(a *App) tea.Cmd {
+		var steps []git.PatchStep
+		var err error
+		for _, key := range keys {
+			var patch string
+			patch, err = git.CommitFilePatch(ctx, runner, key.parentOID, key.commitOID, key.file)
+			if err != nil {
+				break
+			}
+			steps = append(steps, git.PatchStep{CommitOID: key.commitOID, ParentOID: key.parentOID, File: key.file, Patch: patch})
+		}
+		return func(a *App) tea.Cmd {
+			s.steps, s.err, s.loading = steps, err, false
+			return nil
+		}
+	})
+}
+
+func (s *selectiveApplyScreen) executeUnavailable(a *App) string {
+	switch {
+	case s.loading:
+		return "patches are loading"
+	case s.err != nil:
+		return s.err.Error()
+	case s.completed != nil:
+		return "already executed"
+	case s.invalidated != "":
+		return s.invalidated
+	case a.status.Branch.OID != s.headOID:
+		return "HEAD moved since the plan was created: plan is stale"
+	}
+	if err := git.ValidateSelectiveApply(a.status, a.operation, s.steps); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+func (s *selectiveApplyScreen) execute(a *App) tea.Cmd {
+	lines := []string{"Destination: " + s.target + " (current checkout only)", "Steps (applied top to bottom):"}
+	for index, step := range s.steps {
+		lines = append(lines, fmt.Sprintf("  %d. %s %s", index+1, shortOID(step.CommitOID), displayPath(step.File.Path)))
+	}
+	lines = append(lines, "", "The whole queue is checked in a temporary index first; if any step fails nothing is applied.",
+		"Each step is then checked and applied with git apply --index. Results are staged; no commit is created.",
+		"Not atomic: if a step still fails, earlier steps stay applied and are reported.")
+	steps, runner, gitDir, headOID := s.steps, a.runner, a.repo.GitDir, s.headOID
+	a.overlay = &confirmOverlay{
+		title:   fmt.Sprintf("Apply %d file patch(es) to the index and working tree?", len(steps)),
+		lines:   lines,
+		command: "git apply --index (one Git-produced patch per step)",
+		buttons: []confirmButton{{label: "Cancel"}, {label: "Apply files", run: func(a *App) tea.Cmd {
+			completed, preflightFailed := 0, false
+			return a.mutate("Apply files from commits", func(ctx context.Context) error {
+				status, err := git.LoadStatus(ctx, runner)
+				if err != nil {
+					return fmt.Errorf("revalidate status: %w", err)
+				}
+				if status.Branch.OID != headOID {
+					return errors.New("revalidate: HEAD moved since the plan was created; reopen the planner")
+				}
+				operation, err := git.DetectOperation(ctx, runner, gitDir)
+				if err != nil {
+					return fmt.Errorf("revalidate operation: %w", err)
+				}
+				if err := git.ValidateSelectiveApply(status, operation, steps); err != nil {
+					return err
+				}
+				if err := git.PreflightPatches(ctx, runner, gitDir, steps); err != nil {
+					preflightFailed = true
+					return err
+				}
+				completed, err = git.ApplyPatchSteps(ctx, runner, steps)
+				return err
+			}, func(a *App, err error) tea.Cmd {
+				notCherryPick := "No Git operation was started: git cherry-pick --continue/--abort do not apply to this patch application."
+				if err == nil {
+					lines := []string{fmt.Sprintf("Applied %d of %d step(s); the changes are staged. No commit was created.", completed, len(s.steps))}
+					for index, step := range s.steps {
+						lines = append(lines, fmt.Sprintf("  %d. ✓ %s %s", index+1, shortOID(step.CommitOID), displayPath(step.File.Path)))
+					}
+					s.completed = append(lines, "Review them in Changes (Esc to the workspace) and commit with c c.")
+					return nil
+				}
+				if preflightFailed || completed == 0 {
+					s.completed = []string{"Nothing was applied: " + err.Error(), "The index and working tree are unchanged.", notCherryPick}
+					return nil
+				}
+				lines := []string{fmt.Sprintf("Stopped after %d of %d step(s): %s", completed, len(s.steps), err.Error())}
+				for index, step := range s.steps {
+					state := "not attempted"
+					switch {
+					case index < completed:
+						state = "applied and staged"
+					case index == completed:
+						state = "failed, not applied"
+					}
+					lines = append(lines, fmt.Sprintf("  %d. %s %s: %s", index+1, shortOID(step.CommitOID), displayPath(step.File.Path), state))
+				}
+				s.completed = append(lines, "This is not atomic and GitFlow does not undo applied steps. Inspect the result in Changes.", notCherryPick)
+				return nil
+			})
+		}}},
+	}
+	return nil
+}
+
+func (s *selectiveApplyScreen) handleKey(a *App, key string) (tea.Cmd, bool) {
+	if next, moved := moveCursor(key, s.cursor, len(s.keys), a.height/2); moved {
+		s.cursor = next
+		return nil, true
+	}
+	if key == "enter" {
+		return a.invoke(a.registry.ByID("sa.preview")), true
+	}
+	return nil, false
+}
+
+func (s *selectiveApplyScreen) preview(a *App) tea.Cmd {
+	step := s.steps[s.cursor]
+	title := fmt.Sprintf("Patch for step %d: %s %s", s.cursor+1, shortOID(step.CommitOID), displayPath(step.File.Path))
+	return a.openViewer(title, func(ctx context.Context) (string, error) {
+		diff, err := git.ParseDiff(step.Patch)
+		if err != nil {
+			return "", fmt.Errorf("render patch: %w", err)
+		}
+		return strings.Join(patchLines(diff), "\n"), nil
+	})
+}
+
+func (s *selectiveApplyScreen) view(a *App, width, height int) string {
+	clean := "yes"
+	if a.status.HasTrackedChanges() {
+		clean = "no (tracked changes present)"
+	}
+	body := []string{
+		styleWarning.Render("Selective patch application — not git cherry-pick"),
+		"Destination: " + s.target + " (current checkout only; nothing is checked out)",
+		"Apply parent→commit patches for SELECTED FILES ONLY; no new commit.",
+		"State before apply: clean? " + clean + " · Expected result: staged patches, no commit",
+	}
+	if s.focusedOnly {
+		body = append(body, styleDirty.Render("Focused file only: no files were selected, so only the focused file is applied."))
+	}
+	if reason := s.executeUnavailable(a); reason != "" && s.completed == nil {
+		body = append(body, styleMuted.Render("Execute unavailable: "+reason))
+	}
+	stepsByPath := map[string][]int{}
+	var paths []string
+	for index, key := range s.keys {
+		for _, path := range []string{key.file.OrigPath, key.file.Path} {
+			if path == "" {
+				continue
+			}
+			if _, seen := stepsByPath[path]; !seen {
+				paths = append(paths, path)
+			}
+			stepsByPath[path] = append(stepsByPath[path], index+1)
+		}
+	}
+	var warnings []string
+	for _, path := range paths {
+		if steps := stepsByPath[path]; len(steps) > 1 {
+			numbers := make([]string, len(steps))
+			for index, step := range steps {
+				numbers[index] = fmt.Sprint(step)
+			}
+			warnings = append(warnings, fmt.Sprintf("%s is changed by steps %s: later steps apply on top of earlier ones", displayPath(path), strings.Join(numbers, ", ")))
+		}
+	}
+	for _, warning := range warnings {
+		body = append(body, styleWarning.Render("! "+warning))
+	}
+	body = append(body, "")
+	rows := make([]string, len(s.keys))
+	for index, key := range s.keys {
+		rows[index] = fmt.Sprintf("[%d] %s %s %c", index+1, shortOID(key.commitOID), displayPath(key.file.Path), key.file.Status)
+		if key.file.OrigPath != "" {
+			rows[index] += " (from " + displayPath(key.file.OrigPath) + ")"
+		}
+	}
+	rendered, offset := renderRows(rows, s.cursor, s.offset, height-panelBorderSize-len(body)-len(s.completed)-2, true)
+	s.offset = offset
+	body = append(body, rendered...)
+	if s.completed != nil {
+		body = append(append(body, ""), s.completed...)
+	}
+	return panel("APPLY FILES FROM COMMITS — NOT CHERRY-PICK", body, width, height, true)
+}
+
+func (s *selectiveApplyScreen) footer() string {
+	return "j/k Move  Enter Review patch  a Actions (Apply files)  Esc Back (never reverts Git state)"
+}
+
+func (s *selectiveApplyScreen) menuTitle(a *App) string {
+	return fmt.Sprintf("Actions for applying %d file(s) from commits", len(s.keys))
+}

@@ -10,7 +10,10 @@ import (
 
 var defaultBaseRefs = []string{"refs/remotes/origin/main", "refs/heads/main"}
 
-var ErrInvalidName = errors.New("invalid name")
+var (
+	ErrInvalidName = errors.New("invalid name")
+	ErrNoUpstream  = errors.New("no upstream configured: set one with Set upstream in the branch inspector")
+)
 
 type Comparison struct {
 	Ref         string
@@ -155,4 +158,53 @@ func PushSetUpstreamInvocation(remote, branch string) (Invocation, error) {
 		return Invocation{}, fmt.Errorf("push %s to %s: %w", branch, remote, ErrInvalidName)
 	}
 	return Invocation{Args: []string{"push", "--set-upstream", remote, branch}}, nil
+}
+
+type Upstream struct {
+	Remote    string
+	RemoteRef string
+}
+
+func LoadUpstream(ctx context.Context, runner *Runner, branch string) (Upstream, error) {
+	if branch == "" || strings.HasPrefix(branch, "-") {
+		return Upstream{}, fmt.Errorf("load upstream of %q: %w", branch, ErrInvalidName)
+	}
+	output, err := runner.Read(ctx, "for-each-ref", "--format=%(upstream:remotename)%00%(upstream:remoteref)", "refs/heads/"+branch)
+	if err != nil {
+		return Upstream{}, fmt.Errorf("load upstream of %s: %w", branch, err)
+	}
+	remote, remoteRef, _ := strings.Cut(strings.TrimRight(string(output), "\n"), "\x00")
+	if remote == "" || remoteRef == "" {
+		return Upstream{}, nil
+	}
+	return Upstream{Remote: remote, RemoteRef: remoteRef}, nil
+}
+
+type SyncKind int
+
+const (
+	SyncFetch SyncKind = iota
+	SyncPull
+	SyncPush
+)
+
+func (k SyncKind) Name() string {
+	return [...]string{"Fetch", "Pull", "Push"}[k]
+}
+
+func SyncInvocation(kind SyncKind, upstream Upstream) (Invocation, error) {
+	if strings.HasPrefix(upstream.Remote, "-") || strings.HasPrefix(upstream.RemoteRef, "-") {
+		return Invocation{}, fmt.Errorf("%s %s %s: %w", kind.Name(), upstream.Remote, upstream.RemoteRef, ErrInvalidName)
+	}
+	switch {
+	case kind == SyncFetch && upstream.Remote == "":
+		return Invocation{Args: []string{"fetch"}}, nil
+	case kind == SyncFetch:
+		return Invocation{Args: []string{"fetch", upstream.Remote}}, nil
+	case upstream.Remote == "":
+		return Invocation{}, fmt.Errorf("%s: %w", kind.Name(), ErrNoUpstream)
+	case kind == SyncPull:
+		return Invocation{Args: []string{"pull", "--ff-only"}}, nil
+	}
+	return Invocation{Args: []string{"push", upstream.Remote, "HEAD:" + upstream.RemoteRef}}, nil
 }

@@ -206,13 +206,16 @@ func (p *paletteOverlay) view(a *App, width, height int) string {
 }
 
 var navigationHelp = map[Scope][]string{
-	ScopeGlobal:     {"Enter  Open focused item", "Space  Toggle selection (UI only, never stages)", "Esc  Close overlay / back (never changes Git)", "j/k ↑/↓  Move", "Tab / Shift+Tab  Next / previous panel", "gg / G  First / last loaded row", "Ctrl+D / Ctrl+U  Half page", "a  Actions for selection or focused item", ":  Command palette", "?  This help", "q  Back, or Quit control at the root"},
-	ScopeChanges:    {"1 2 3 4  All / Staged / Not staged / Mixed", "S  Select all visible files, or clear them if all selected (UI only)", "/  Filter paths (Enter keep, Esc clear)"},
-	ScopeHistory:    {"/  Filter loaded commits (Enter keep, Esc clear)"},
-	ScopeConflict:   {"n / N  Next / previous conflict region"},
-	ScopeComposer:   {"Tab  Next field or button", "Esc  Leave text field, then leave composer"},
-	ScopeDiff:       {"Tab  Switch staged / unstaged section"},
-	ScopeCherryPick: {"Space  Include / exclude queue row", "Enter  Inspect commit"},
+	ScopeGlobal:         {"Enter  Open focused item", "Space  Toggle selection (UI only, never stages)", "Esc  Close overlay / back (never changes Git)", "j/k ↑/↓  Move", "Tab / Shift+Tab  Next / previous panel", "gg / G  First / last loaded row", "Ctrl+D / Ctrl+U  Half page", "S  Select / deselect all listed files (UI only)", "a  Actions for selection or focused item", ":  Command palette", "?  This help", "q  Back, or Quit control at the root"},
+	ScopeChanges:        {"1 2 3 4  All / Staged / Not staged / Mixed", "/  Filter paths (Enter keep, Esc clear)"},
+	ScopeHistory:        {"/  Filter loaded commits (Enter keep, Esc clear)"},
+	ScopeConflict:       {"n / N  Next / previous conflict region"},
+	ScopeComposer:       {"Tab  Next field or button", "Esc  Leave text field, then leave composer"},
+	ScopeDiff:           {"Tab  Switch staged / unstaged section"},
+	ScopeCherryPick:     {"Space  Include / exclude queue row", "Enter  Inspect commit"},
+	ScopeCommitFiles:    {"Space  Select file in this commit (UI only)", "Enter  Expand / collapse focused file diff", "Tab  Files / diff panel"},
+	ScopeSelectiveApply: {"Enter  Review focused step patch"},
+	ScopeSync:           {"Tab  Move between Review / Execute / Cancel", "Enter  Activate focused control"},
 }
 
 type helpOverlay struct {
