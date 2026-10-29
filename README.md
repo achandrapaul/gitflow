@@ -1,37 +1,24 @@
-# GitFlow — Claude build handoff
+# GitFlow — Clean v2.3 Build Handoff
 
-**Deliverable:** strict requirements, keyboard contract, screen designs, step-by-step interaction walkthroughs, Git semantics, release scope, acceptance tests, and a standalone clickable/keyboard-preview HTML file.
+**Current single source of truth:** `spec/GITFLOW_REQUIREMENTS_V2_3.md` (approved decisions, 29 October 2026). Older normative versions are excluded. This package contains one active spec and matching current verification artifacts.
 
 ## Start here
-- `CLAUDE.md` — instructions intended for Claude Code, including prohibition on additional features.
-- `spec/00_PRODUCT_CONTRACT.md` — baseline product decisions and P0 scope.
-- `spec/01_KEYBOARD_AND_ACTIONS.md` — exact keys, conflicts, focus/selection semantics.
-- `spec/02_GIT_SEMANTICS.md` — index/worktree, upstream/base, native Git operations.
-- `spec/03_WORKFLOWS.md` — explicit entry/exit paths and Git command lifecycle.
-- `spec/04_SCOPE_AND_OPEN_DECISIONS.md` — frozen scope, intentionally unresolved details and implementation selection rules.
-- `screens/SCREEN_SPECS.md` — terminal wireframes for all screens, including empty/error states.
-- `screens/WALKTHROUGHS.md` — precise keystroke-by-keystroke journeys; no mouse is part of the product.
-- `tests/ACCEPTANCE.md` — individual acceptance criteria.
-- `tests/SCENARIOS.md` — fixture/integration test scenarios.
-- `prototype/index.html` — open locally in a browser to explore representative screens; **not** implementation code, **not** a real Git tool.
+1. `spec/GITFLOW_REQUIREMENTS_V2_3.md` — sole normative product, keyboard, UX and Git contract.
+2. `CHANGELOG_V2_3.md` — approved changes from v2.2, with preserved decisions.
+3. `tests/ACCEPTANCE_V2_3.md` and `tests/SCENARIOS_V2_3.md` — checks and integration fixtures.
+4. `tests/TRACEABILITY_V2_3.md` — stable IDs to tests, including evidence status.
+5. `CLAUDE.md` — implementation instructions.
 
-## Vocabulary
-- **Focused**: one row currently highlighted by keyboard navigation. Not selected, staged, or executed.
-- **Selected**: UI-only membership toggled via Space; may include hidden-by-filter rows.
-- **Staged**: actual index difference from HEAD. Git-native status.
-- **Not staged**: file with changes or untracked content, but **no** index change.
-- **Mixed**: file has index change AND additional worktree change.
-- **Upstream**: tracking branch configured for the current local branch.
-- **Comparison base**: separately configured local ref, default `refs/remotes/origin/main` when available.
-- **Resume dashboard**: reopen the UI, no Git mutation.
-- **Continue**: invoke the active operation's native `--continue` when valid.
-- **Skip/Abort**: explicit Git mutations requiring review/confirmation.
+## v2.3 cherry-pick behavior
+- **Clean tracked state:** Whole-commit cherry-pick executes directly, without any stash/unstash operations.
+- **Dirty tracked state:** `g c` browsing stays read-only. At whole-commit Execute show affected paths and `s` **Stash and Proceed** or `Esc` **Cancel**. Only explicit `s` authorizes tracked-only stash creation and the reviewed cherry-pick sequence.
+- **After all commits succeed:** Automatically restore original tracked changes and staged state where supported, using the exact workflow-created stash. No restore while native cherry-pick is paused/aborted.
+- **Restore conflicts:** `c` **Continue unstash** to S09/manual conflict resolution, or `a` **Abort unstash** to confirmed, safely verified rollback of only attempted restoration. Preserve original stash and committed cherry-picks; Esc only navigates.
+- **Selective historical-file application:** Never uses the new stash-and-proceed flow; still requires a clean tracked index/worktree before staging selected patches.
+- **No extra screens or general stash management:** S16 remains read-only; branch-switch stash recovery (ST02) stays unchanged and never auto-restores.
 
-## How to give this ZIP to Claude
-Extract the ZIP into a project working directory and tell Claude Code: **“Read `CLAUDE.md` and implement exactly the bundled GitFlow specification. Do not introduce extra features. Maintain a requirement-to-test coverage matrix and report decisions or blockers.”**
+## Unchanged v2.2 behavior
+`a m` create from main and FF-update/direct choice, `g n`/`a n` local creation, explicit `s`/Enter switch prompt, branch-switch ST02 recovery, exact total/hidden selection review, navigation continuity, global `g`/contextual `a` shortcuts, native staging/commit/rebase/paused-op contracts, 100ms first-frame target, and all S01–S16 screen IDs remain in force.
 
-Sample filenames and counts across the screen prototypes are illustrative only. Product screens must draw values from the real repo.
-
-
-## Approved v1.1 update
-**Read `spec/05_INTELLIJ_STYLE_GIT_WORKSPACE.md`**. This adds IntelIiJ-inspired history-to-file navigation, reviewed pull/push, and file-selective commit patch application. The latter is intentionally **not** the same Git operation as cherry-picking a whole commit. The added screens S13–S15 are binding.
+## What this package is not
+This is a **contract and test-plan handoff**, not executable app source, executed integration tests or a validated performance benchmark. Only approved operations may be implemented.
