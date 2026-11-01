@@ -69,6 +69,7 @@ func newTestAppFor(t *testing.T, fixture *gittest.Fixture, prefsPath string) *Ap
 		Branches:       brancher,
 		Remote:         git.NewRemoteSync(runner, status, operations, brancher),
 		CherryPicker:   cherryPicker,
+		Rebaser:        git.NewRebaser(runner, status, operations),
 		Operations:     operations,
 		Controls:       git.NewOperationController(runner, status, operations),
 		Conflicts:      git.NewConflictReader(runner),

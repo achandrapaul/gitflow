@@ -49,6 +49,7 @@ const (
 	fetchTitle                = "Fetch"
 	pullTitle                 = "Pull"
 	pullFastForwardTitle      = "Pull (fast-forward only)"
+	pullRebaseTitle           = "Pull (rebase)"
 	pushTitle                 = "Push"
 	forcePushTitle            = "Force push with lease"
 	syncBlockedTitle          = "%s blocked"
@@ -77,6 +78,7 @@ var (
 	fetchCommand           = []string{gitProgram, "fetch"}
 	pullCommand            = []string{gitProgram, "pull"}
 	pullFastForwardCommand = []string{gitProgram, "pull", "--ff-only"}
+	pullRebaseCommand      = []string{gitProgram, "pull", "--rebase"}
 	pushCommand            = []string{gitProgram, "push"}
 )
 
@@ -339,7 +341,7 @@ func (app *App) syncRemote(title string, command []string, work func(ctx context
 					consequences: append([]string{syncBlockerText[blocked.Blocker]}, blocked.Paths...), hints: blockedHints}
 			}, nil
 		case err != nil:
-			return nil, err
+			return review, err
 		case review != nil:
 			return review, nil
 		}

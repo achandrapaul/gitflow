@@ -72,9 +72,34 @@ const (
 	reasonNoFiles          = "Select at least one file with Space"
 	reasonPreviewFiles     = "Preview the selected files with p first"
 	overlapStepCount       = 2
+	rebaseExecuteTitle     = "Execute rebase"
+	rebaseTitle            = "Interactive Rebase Planner · %s onto %s"
+	rebaseRangeLine        = "Range %s..%s · %d commits, oldest first · rewrites %s only, never pushes"
+	rebaseLoading          = "Reading the range…"
+	rebaseTodoLine         = "%d. %-6s %s %s"
+	rebasePublishedLine    = "Published: %s already contain these commits · Execute asks for confirmation"
+	rebasePreviewStale     = "The plan changed since the last preview · v previews it again"
+	rebaseHints            = "p pick · r reword · e edit · s squash · f fixup · d drop · J/K reorder · v Preview · a Actions · Esc drops the plan"
+	rebasePreviewTitle     = "Rebase preview · %s onto %s"
+	rebasePreviewCounts    = "pick %d · reword %d · edit %d · squash %d · fixup %d · drop %d"
+	rebasePreviewEditor    = "Reword and squash open your configured Git editor in this terminal"
+	rebasePreviewReady     = "Ready: a Actions → " + rebaseExecuteTitle
+	rebasePublishedTitle   = "Rewrite published commits?"
+	rebasePublishedRefs    = "Already on: %s"
+	rebaseNoPush           = "GitFlow never pushes the rewritten history; the remote keeps the old commits"
+	rebasePublishedHints   = "c rewrites local history · Esc cancels without touching Git"
+	rebasedNotice          = "Rebased %s onto %s · %d commits after the base · not pushed"
+	rebasePausedNotice     = "Rebase paused after %d steps · resolve it in the Paused Operation Dashboard"
+	reasonPlannerClosed    = "Open the Interactive Rebase Planner from History (a Actions → Rebase onto base) first"
+	reasonPlanNotLoaded    = "The rebase range is not loaded or is blocked"
+	reasonPreviewPlan      = "Preview the current plan with v first"
+	reasonPlanStale        = "HEAD moved since the plan was read · reopen the planner from History"
+	reasonNoFocusedCommit  = "Focus the base commit first"
 )
 
 var cherryPickCommand = []string{gitProgram, "cherry-pick"}
+
+var rebaseCommand = []string{gitProgram, "rebase", "-i"}
 
 type cherryPickPreviewMsg struct {
 	reviewedHead string
@@ -241,20 +266,171 @@ func (cherryPick *cherryPickScreen) Scope() Scope {
 	return ScopeCherryPick
 }
 
+type rebaseRangeMsg struct {
+	plan git.RebaseRange
+	err  error
+}
+
+type rebasePreviewMsg struct {
+	preview rebasePreview
+	err     error
+}
+
+type rebaseFinishedMsg struct {
+	outcome git.SequenceOutcome
+	err     error
+}
+
+type rebasePreview struct {
+	reviewed  git.RebaseRange
+	published []string
+	blocker   error
+}
+
 type rebaseScreen struct {
-	base       string
-	steps      []git.TodoStep
-	row        int
-	preview    bool
-	published  bool
-	validation string
+	app     *App
+	history *historyScreen
+	plan    git.RebaseRange
+	loaded  bool
+	err     error
+	row     int
+	preview *rebasePreview
+}
+
+func (app *App) rebaseOnTop() (*rebaseScreen, bool) {
+	if len(app.stack) == 0 {
+		return nil, false
+	}
+	rebase, open := app.top().(*rebaseScreen)
+	return rebase, open
+}
+
+func (app *App) rebasePlanAvailability() (bool, string) {
+	rebase, open := app.rebaseOnTop()
+	switch {
+	case !open:
+		return false, reasonPlannerClosed
+	case !rebase.loaded || rebase.err != nil:
+		return false, reasonPlanNotLoaded
+	}
+	return true, ""
+}
+
+func (app *App) setTodoAction(action git.TodoAction) tea.Cmd {
+	rebase, _ := app.rebaseOnTop()
+	rebase.plan.Steps[rebase.row].Action = action
+	return nil
+}
+
+func (app *App) moveTodo(step int) tea.Cmd {
+	rebase, _ := app.rebaseOnTop()
+	steps, target := rebase.plan.Steps, rebase.row+step
+	if target < 0 || target >= len(steps) {
+		return nil
+	}
+	steps[rebase.row], steps[target] = steps[target], steps[rebase.row]
+	rebase.row = target
+	return nil
 }
 
 func (rebase *rebaseScreen) ID() ScreenID { return ScreenRebase }
 
-func (rebase *rebaseScreen) Update(app *App, msg tea.Msg) (tea.Cmd, bool) { return nil, false }
+func (rebase *rebaseScreen) Update(app *App, msg tea.Msg) (tea.Cmd, bool) {
+	switch msg := msg.(type) {
+	case rebaseRangeMsg:
+		rebase.loaded, rebase.err = true, msg.err
+		if msg.err == nil {
+			rebase.plan = msg.plan
+		}
+		return nil, true
+	case rebasePreviewMsg:
+		if msg.err != nil {
+			app.errorText = msg.err.Error()
+			return nil, true
+		}
+		rebase.preview = &msg.preview
+		if app.top() != rebase {
+			return nil, true
+		}
+		reviewed := msg.preview.reviewed
+		counts := map[git.TodoAction]int{}
+		var consequences []string
+		for position, step := range reviewed.Steps {
+			counts[step.Action]++
+			consequences = append(consequences, fmt.Sprintf(rebaseTodoLine, position+1, step.Action, shortOID(step.OID), step.Subject))
+		}
+		consequences = append(consequences, fmt.Sprintf(rebasePreviewCounts, counts[git.TodoPick], counts[git.TodoReword], counts[git.TodoEdit], counts[git.TodoSquash], counts[git.TodoFixup], counts[git.TodoDrop]))
+		if counts[git.TodoReword]+counts[git.TodoSquash] > 0 {
+			consequences = append(consequences, rebasePreviewEditor)
+		}
+		if len(msg.preview.published) > 0 {
+			consequences = append(consequences, appStyles.warning.Render(fmt.Sprintf(rebasePublishedLine, strings.Join(msg.preview.published, pathListSeparator))))
+		}
+		if msg.preview.blocker != nil {
+			consequences = append(consequences, appStyles.conflict.Render(fmt.Sprintf(previewBlocked, msg.preview.blocker.Error())))
+		} else {
+			consequences = append(consequences, rebasePreviewReady)
+		}
+		app.overlay = &confirmOverlay{title: fmt.Sprintf(rebasePreviewTitle, reviewed.Branch, shortOID(reviewed.Base)), command: append(slices.Clone(rebaseCommand), reviewed.Base), consequences: consequences, hints: previewHints}
+		return nil, true
+	case rebaseFinishedMsg:
+		app.busy = false
+		completed := len(msg.outcome.Completed)
+		switch {
+		case msg.err != nil:
+			app.errorText = msg.err.Error()
+		case msg.outcome.Paused:
+			app.pop()
+			app.notice = fmt.Sprintf(rebasePausedNotice, completed)
+			app.push(&pausedScreen{app: app})
+		default:
+			app.pop()
+			app.notice = fmt.Sprintf(rebasedNotice, rebase.plan.Branch, shortOID(rebase.plan.Base), completed)
+		}
+		return tea.Batch(app.refresh(), rebase.history.reload(app)), true
+	case tea.KeyMsg:
+		cursor := listCursor{index: rebase.row}
+		if !cursor.navigate(msg.String(), len(rebase.plan.Steps), app.height/2) {
+			return nil, false
+		}
+		rebase.row = cursor.index
+		return nil, true
+	}
+	return nil, false
+}
 
-func (rebase *rebaseScreen) View(width, height int) string { return "" }
+func (rebase *rebaseScreen) View(width, height int) string {
+	plan := rebase.plan
+	lines := []string{appStyles.header.Render(fmt.Sprintf(rebaseTitle, rebase.app.repository.status.Branch, shortOID(plan.Base)))}
+	switch {
+	case rebase.err != nil:
+		lines = append(lines, appStyles.conflict.Render(fmt.Sprintf(previewBlocked, rebase.err.Error())))
+	case !rebase.loaded:
+		lines = append(lines, rebaseLoading)
+	default:
+		lines = append(lines, fmt.Sprintf(rebaseRangeLine, shortOID(plan.Base), shortOID(plan.Head), len(plan.Steps), plan.Branch))
+		for position, step := range plan.Steps {
+			line := fmt.Sprintf(rebaseTodoLine, position+1, step.Action, shortOID(step.OID), step.Subject)
+			if position == rebase.row {
+				line = appStyles.selected.Render(line)
+			}
+			lines = append(lines, line)
+		}
+		if err := rebase.app.deps.Rebaser.Validate(plan.Steps); err != nil {
+			lines = append(lines, appStyles.conflict.Render(fmt.Sprintf(previewBlocked, err.Error())))
+		}
+		preview := rebase.preview
+		switch {
+		case preview == nil:
+		case !slices.Equal(preview.reviewed.Steps, plan.Steps):
+			lines = append(lines, rebasePreviewStale)
+		case len(preview.published) > 0:
+			lines = append(lines, appStyles.warning.Render(fmt.Sprintf(rebasePublishedLine, strings.Join(preview.published, pathListSeparator))))
+		}
+	}
+	lines = append(lines, "", rebaseHints)
+	return lipgloss.NewStyle().Width(width).MaxHeight(max(1, height)).Render(strings.Join(lines, "\n"))
+}
 
 func (rebase *rebaseScreen) Scope() Scope { return ScopeRebase }
 

@@ -17,7 +17,7 @@ const (
 
 var (
 	ErrTrackingUnconfirmed = errors.New("push succeeded but upstream tracking was not confirmed")
-	pullModeArgs           = map[PullMode][]string{PullConfigured: nil, PullFastForwardOnly: {"--ff-only"}}
+	pullModeArgs           = map[PullMode][]string{PullConfigured: nil, PullFastForwardOnly: {"--ff-only"}, PullRebase: {"--rebase"}}
 )
 
 type PullMode int

@@ -23,14 +23,14 @@
 | T15 | 10 | Implemented: noncontiguous commits applied in queue order (TestCherryPickerPick, TestCherryPickPreviewAndExecute) |
 | T16 | 09 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 09 |
 | T17 | 09 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 09 |
-| T18 | 12 | v2.1 scenario known; verify exact v2.3 wording |
-| T19 | 12 | v2.1 scenario known; verify exact v2.3 wording |
-| T20 | 12 | v2.1 scenario known; verify exact v2.3 wording |
-| T21 | 12 | v2.1 scenario known; verify exact v2.3 wording |
+| T18 | 12 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 12 |
+| T19 | 12 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 12 |
+| T20 | 12 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 12 |
+| T21 | 12 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 12 |
 | T22 | 09 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 09 |
 | T23 | 09 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 09 |
 | T24 | 09 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 09 |
-| T25 | 12 | v2.1 scenario known; verify exact v2.3 wording |
+| T25 | 12 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 12 |
 | T26 | 01 | v2.1 scenario known; verify exact v2.3 wording |
 | T27 | 10 | Implemented: empty pick pauses natively into the Paused Operation Dashboard; no `--allow-empty` (TestCherryPickEmptyPickPauses) |
 | T28 | 09 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 09 |
@@ -52,7 +52,7 @@
 | T57 | 04 | v2.1 scenario known; verify exact v2.3 wording |
 | T58 | 04 | v2.1 scenario known; verify exact v2.3 wording |
 | T84 | 06 | v2.1 scenario known; verify exact v2.3 wording |
-| T85 | 12 | v2.1 scenario known; verify exact v2.3 wording |
+| T85 | 12 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 12 |
 | T86 | 06 | v2.1 scenario known; verify exact v2.3 wording |
 | T87 | 06 | v2.1 scenario known; verify exact v2.3 wording |
 | T88 | 01 | v2.1 scenario known; verify exact v2.3 wording |

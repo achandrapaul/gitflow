@@ -341,6 +341,12 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return app, nil
 		}
 		return app, app.refresh()
+	case handoffReadyMsg:
+		if msg.err != nil {
+			app.errorText = msg.err.Error()
+			return app, nil
+		}
+		return app, app.handoff(msg.command, msg.finish)
 	case stashesLoadedMsg:
 		if app.stashes == nil {
 			return app, nil
@@ -527,15 +533,19 @@ func (app *App) refresh() tea.Cmd {
 }
 
 func (app *App) mutate(work func(ctx context.Context) (func(app *App), error), refresh RefreshPolicy, outcome string) tea.Cmd {
+	return app.runBusy(func() tea.Msg {
+		settle, err := work(app.ctx)
+		return mutationDoneMsg{refresh: refresh, outcome: outcome, settle: settle, err: err}
+	})
+}
+
+func (app *App) runBusy(work tea.Cmd) tea.Cmd {
 	if app.busy {
 		app.notice = actionBusy
 		return nil
 	}
 	app.busy = true
-	return func() tea.Msg {
-		settle, err := work(app.ctx)
-		return mutationDoneMsg{refresh: refresh, outcome: outcome, settle: settle, err: err}
-	}
+	return work
 }
 
 func (app *App) dispatchKey(key tea.KeyMsg) tea.Cmd {

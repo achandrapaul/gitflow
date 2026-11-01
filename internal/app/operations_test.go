@@ -232,7 +232,7 @@ func TestConflictResolverFallbacksAndEditor(t *testing.T) {
 		t.Fatal("T24 side keys changed a binary conflict")
 	}
 
-	ready, isReady := press(gitflowApp, "e")().(editorReadyMsg)
+	ready, isReady := press(gitflowApp, "e")().(handoffReadyMsg)
 	want := []string{"sh", "-c", `true "$@"`, "true", filepath.Join(fixture.Dir, "image.bin")}
 	if !isReady || ready.err != nil || !slices.Equal(ready.command.Args, want) || ready.command.Dir != fixture.Dir {
 		t.Fatalf("e prepared %+v, want %v in %s", ready, want, fixture.Dir)

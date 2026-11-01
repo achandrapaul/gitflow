@@ -272,7 +272,24 @@ func defaultActions() []Action {
 					return summary, nil, err
 				})
 			}},
-		{ID: actionPullRebase, Title: "Pull (rebase)", Scope: ScopeGlobal, Keys: []string{"g r"}, Review: ReviewPlan, Refresh: RefreshAll},
+		{ID: actionPullRebase, Title: pullRebaseTitle, Scope: ScopeGlobal, Keys: []string{"g r"}, Refresh: RefreshAll,
+			Available: func(app *App) (bool, string) { return app.syncAvailability(true) },
+			Run: func(app *App) tea.Cmd {
+				return app.syncRemote(pullRebaseTitle, pullRebaseCommand, func(ctx context.Context) (string, func(app *App), error) {
+					summary, err := app.deps.Remote.Pull(ctx, git.PullRebase)
+					if err == nil {
+						return summary, nil, nil
+					}
+					operation, activeErr := app.deps.Operations.Active(ctx)
+					if activeErr != nil {
+						return "", nil, errors.Join(err, activeErr)
+					}
+					if operation.Kind != git.OperationRebase {
+						return "", nil, err
+					}
+					return "", func(app *App) { app.push(&pausedScreen{app: app}) }, err
+				})
+			}},
 		{ID: actionPullFastForward, Title: pullFastForwardTitle, Scope: ScopeGlobal, Keys: []string{"g f"}, Refresh: RefreshAll,
 			Available: func(app *App) (bool, string) { return app.syncAvailability(true) },
 			Run: func(app *App) tea.Cmd {
@@ -508,7 +525,33 @@ func defaultActions() []Action {
 				}
 				return false, reasonCompareContractGap
 			}},
-		{ID: actionRebaseStart, Title: "Rebase onto base", Scope: ScopeHistory},
+		{ID: actionRebaseStart, Title: "Rebase onto base", Scope: ScopeHistory,
+			Available: func(app *App) (bool, string) {
+				history, open := app.historyOnTop()
+				status := app.repository.status
+				switch {
+				case !open:
+					return false, reasonHistoryClosed
+				case history.focusOID == "":
+					return false, reasonNoFocusedCommit
+				case app.repository.operation.Active():
+					return false, syncBlockerText[git.SyncOperation]
+				case status.Unborn:
+					return false, reasonNoCommits
+				case status.Detached:
+					return false, reasonDetachedHead
+				}
+				return true, ""
+			},
+			Run: func(app *App) tea.Cmd {
+				history, _ := app.historyOnTop()
+				base := history.focusOID
+				app.push(&rebaseScreen{app: app, history: history, plan: git.RebaseRange{Base: base}})
+				return func() tea.Msg {
+					plan, err := app.deps.Rebaser.Range(app.ctx, base)
+					return rebaseRangeMsg{plan: plan, err: err}
+				}
+			}},
 		{ID: actionCherryPickPreview, Title: "Preview", Scope: ScopeCherryPick, Keys: []string{"p"},
 			Available: func(app *App) (bool, string) { return app.cherryPickQueueAvailability() },
 			Run: func(app *App) tea.Cmd {
@@ -573,16 +616,87 @@ func defaultActions() []Action {
 			}},
 		{ID: actionContinueUnstash, Title: "Continue unstash", Scope: ScopeStashRestore, Keys: []string{"c"}, Refresh: RefreshAll},
 		{ID: actionAbortUnstash, Title: "Abort unstash", Scope: ScopeStashRestore, Keys: []string{"a"}, Review: ReviewConfirm, Refresh: RefreshAll},
-		{ID: actionRebasePreview, Title: "Preview", Scope: ScopeRebase, Keys: []string{"v"}},
-		{ID: actionRebasePick, Title: "Pick", Scope: ScopeRebase, Keys: []string{"p"}},
-		{ID: actionRebaseReword, Title: "Reword", Scope: ScopeRebase, Keys: []string{"r"}},
-		{ID: actionRebaseEdit, Title: "Edit", Scope: ScopeRebase, Keys: []string{"e"}},
-		{ID: actionRebaseSquash, Title: "Squash", Scope: ScopeRebase, Keys: []string{"s"}},
-		{ID: actionRebaseFixup, Title: "Fixup", Scope: ScopeRebase, Keys: []string{"f"}},
-		{ID: actionRebaseDrop, Title: "Drop", Scope: ScopeRebase, Keys: []string{"d"}},
-		{ID: actionRebaseMoveDown, Title: "Move todo down", Scope: ScopeRebase, Keys: []string{"J"}},
-		{ID: actionRebaseMoveUp, Title: "Move todo up", Scope: ScopeRebase, Keys: []string{"K"}},
-		{ID: actionRebaseExecute, Title: "Execute rebase", Scope: ScopeRebase, Review: ReviewPlan, Refresh: RefreshAll},
+		{ID: actionRebasePreview, Title: "Preview", Scope: ScopeRebase, Keys: []string{"v"},
+			Available: func(app *App) (bool, string) { return app.rebasePlanAvailability() },
+			Run: func(app *App) tea.Cmd {
+				rebase, _ := app.rebaseOnTop()
+				reviewed := rebase.plan
+				reviewed.Steps = slices.Clone(reviewed.Steps)
+				return func() tea.Msg {
+					published, err := app.deps.Rebaser.Published(app.ctx, reviewed)
+					return rebasePreviewMsg{preview: rebasePreview{reviewed: reviewed, published: published, blocker: app.deps.Rebaser.Validate(reviewed.Steps)}, err: err}
+				}
+			}},
+		{ID: actionRebasePick, Title: "Pick", Scope: ScopeRebase, Keys: []string{"p"},
+			Available: func(app *App) (bool, string) { return app.rebasePlanAvailability() },
+			Run:       func(app *App) tea.Cmd { return app.setTodoAction(git.TodoPick) }},
+		{ID: actionRebaseReword, Title: "Reword", Scope: ScopeRebase, Keys: []string{"r"},
+			Available: func(app *App) (bool, string) { return app.rebasePlanAvailability() },
+			Run:       func(app *App) tea.Cmd { return app.setTodoAction(git.TodoReword) }},
+		{ID: actionRebaseEdit, Title: "Edit", Scope: ScopeRebase, Keys: []string{"e"},
+			Available: func(app *App) (bool, string) { return app.rebasePlanAvailability() },
+			Run:       func(app *App) tea.Cmd { return app.setTodoAction(git.TodoEdit) }},
+		{ID: actionRebaseSquash, Title: "Squash", Scope: ScopeRebase, Keys: []string{"s"},
+			Available: func(app *App) (bool, string) { return app.rebasePlanAvailability() },
+			Run:       func(app *App) tea.Cmd { return app.setTodoAction(git.TodoSquash) }},
+		{ID: actionRebaseFixup, Title: "Fixup", Scope: ScopeRebase, Keys: []string{"f"},
+			Available: func(app *App) (bool, string) { return app.rebasePlanAvailability() },
+			Run:       func(app *App) tea.Cmd { return app.setTodoAction(git.TodoFixup) }},
+		{ID: actionRebaseDrop, Title: "Drop", Scope: ScopeRebase, Keys: []string{"d"},
+			Available: func(app *App) (bool, string) { return app.rebasePlanAvailability() },
+			Run:       func(app *App) tea.Cmd { return app.setTodoAction(git.TodoDrop) }},
+		{ID: actionRebaseMoveDown, Title: "Move todo down", Scope: ScopeRebase, Keys: []string{"J"},
+			Available: func(app *App) (bool, string) { return app.rebasePlanAvailability() },
+			Run:       func(app *App) tea.Cmd { return app.moveTodo(1) }},
+		{ID: actionRebaseMoveUp, Title: "Move todo up", Scope: ScopeRebase, Keys: []string{"K"},
+			Available: func(app *App) (bool, string) { return app.rebasePlanAvailability() },
+			Run:       func(app *App) tea.Cmd { return app.moveTodo(-1) }},
+		{ID: actionRebaseExecute, Title: rebaseExecuteTitle, Scope: ScopeRebase, Review: ReviewPlan, Refresh: RefreshAll,
+			Available: func(app *App) (bool, string) {
+				if available, reason := app.rebasePlanAvailability(); !available {
+					return false, reason
+				}
+				rebase, _ := app.rebaseOnTop()
+				preview, status := rebase.preview, app.repository.status
+				switch {
+				case rebase.plan.Head != status.Head:
+					return false, reasonPlanStale
+				case preview == nil || !slices.Equal(preview.reviewed.Steps, rebase.plan.Steps):
+					return false, reasonPreviewPlan
+				case preview.blocker != nil:
+					return false, fmt.Sprintf(reasonPreviewBlocked, preview.blocker.Error())
+				case app.repository.operation.Active():
+					return false, syncBlockerText[git.SyncOperation]
+				case !status.TrackedClean():
+					return false, fmt.Sprintf(reasonTrackedChanges, strings.Join(append(slices.Clone(status.TrackedDirtyPaths), status.Unmerged...), pathListSeparator))
+				}
+				return true, ""
+			},
+			Run: func(app *App) tea.Cmd {
+				rebase, _ := app.rebaseOnTop()
+				reviewed, published := rebase.preview.reviewed, rebase.preview.published
+				start := func(app *App) tea.Cmd {
+					return app.runBusy(func() tea.Msg {
+						run, err := app.deps.Rebaser.Prepare(app.ctx, reviewed)
+						if err != nil {
+							return mutationDoneMsg{refresh: RefreshAll, err: err}
+						}
+						return handoffReadyMsg{command: run.Command, finish: func(exitErr error) tea.Msg {
+							outcome, err := app.deps.Rebaser.Finish(app.ctx, run)
+							if err == nil && exitErr != nil && !outcome.Paused {
+								err = fmt.Errorf(handoffFailed, gitProgram, exitErr)
+							}
+							return rebaseFinishedMsg{outcome: outcome, err: err}
+						}}
+					})
+				}
+				if len(published) == 0 {
+					return start(app)
+				}
+				app.overlay = &confirmOverlay{title: rebasePublishedTitle, command: append(slices.Clone(rebaseCommand), reviewed.Base),
+					consequences: []string{fmt.Sprintf(rebasePublishedRefs, strings.Join(published, pathListSeparator)), rebaseNoPush}, confirmKey: keyConfirmGuarded, hints: rebasePublishedHints, onConfirm: start}
+				return nil
+			}},
 		{ID: actionApplyPreview, Title: "Preview", Scope: ScopeSelectiveApply, Keys: []string{"p"}, Aliases: []Binding{{Scope: ScopeCommitFiles, Keys: []string{"p"}}},
 			Available: func(app *App) (bool, string) {
 				_, available, reason := app.selectiveApplyAvailability()
@@ -742,7 +856,7 @@ func defaultActions() []Action {
 				path := conflict.path
 				return func() tea.Msg {
 					command, err := app.deps.Conflicts.EditorCommand(app.ctx, path)
-					return editorReadyMsg{command: command, err: err}
+					return handoffReadyMsg{command: command, err: err}
 				}
 			}},
 		{ID: actionConflictResolved, Title: "Mark resolved", Scope: ScopeConflict, Review: ReviewConfirm, Refresh: RefreshStatus,

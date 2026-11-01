@@ -24,6 +24,7 @@ const (
 	pausedCompletedFormat    = " · %d commits already applied"
 	pausedConflictReason     = "Reason: conflicts in %d files"
 	pausedCleanReason        = "Reason: Git stopped without conflicts"
+	pausedStopReason         = "Reason: Git stopped at the %s step without conflicts"
 	pausedConflictsHeader    = "Conflicted files · Enter opens the Conflict Resolver"
 	pausedControlsHeader     = "Controls"
 	pausedNextConflicts      = "Next: resolve each file, mark it resolved, then c Continue"
@@ -153,8 +154,11 @@ func (paused *pausedScreen) View(width, height int) string {
 		}
 		conflicted := app.repository.status.Unmerged
 		reason, next := pausedCleanReason, fmt.Sprintf(pausedNextContinue, name)
-		if len(conflicted) > 0 {
+		switch {
+		case len(conflicted) > 0:
 			reason, next = fmt.Sprintf(pausedConflictReason, len(conflicted)), pausedNextConflicts
+		case operation.StopAction != "":
+			reason = fmt.Sprintf(pausedStopReason, operation.StopAction)
 		}
 		if operation.Kind == git.OperationRevert {
 			next = pausedNextRevert
@@ -194,8 +198,9 @@ type conflictLoadedMsg struct {
 	err       error
 }
 
-type editorReadyMsg struct {
+type handoffReadyMsg struct {
 	command *exec.Cmd
+	finish  func(exitErr error) tea.Msg
 	err     error
 }
 
@@ -249,12 +254,6 @@ func (conflict *conflictScreen) Update(app *App, msg tea.Msg) (tea.Cmd, bool) {
 		conflict.operation, conflict.labels, conflict.file = msg.operation, msg.labels, msg.file
 		conflict.region = max(0, min(conflict.region, len(conflict.file.Regions)-1))
 		return nil, true
-	case editorReadyMsg:
-		if msg.err != nil {
-			app.errorText = msg.err.Error()
-			return nil, true
-		}
-		return app.handoff(msg.command), true
 	}
 	return nil, false
 }
@@ -332,9 +331,12 @@ func (app *App) moveConflictRegion(step int) tea.Cmd {
 	return nil
 }
 
-func (app *App) handoff(command *exec.Cmd) tea.Cmd {
+func (app *App) handoff(command *exec.Cmd, finish func(exitErr error) tea.Msg) tea.Cmd {
 	program := filepath.Base(command.Path)
 	return tea.ExecProcess(command, func(err error) tea.Msg {
+		if finish != nil {
+			return finish(err)
+		}
 		if err != nil {
 			err = fmt.Errorf(handoffFailed, program, err)
 		}

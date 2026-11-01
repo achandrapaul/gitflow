@@ -175,7 +175,7 @@ func TestDefaultActions(t *testing.T) {
 			}
 			continue
 		}
-		if action.ID == actionCompareCommits {
+		if slices.Contains([]ActionID{actionCompareCommits, actionRebaseStart}, action.ID) {
 			if available || reason != reasonHistoryClosed {
 				t.Errorf("%s: available=%v reason=%q, want %q", action.ID, available, reason, reasonHistoryClosed)
 			}
@@ -188,7 +188,7 @@ func TestDefaultActions(t *testing.T) {
 			continue
 		}
 		if slices.Contains([]ActionID{actionCommit, actionCommitNoVerify, actionAmend, actionStage, actionUnstage, actionCreateBranch,
-			actionPullConfigured, actionPullFastForward, actionPush, actionForcePush}, action.ID) {
+			actionPullConfigured, actionPullRebase, actionPullFastForward, actionPush, actionForcePush}, action.ID) {
 			if available || reason != reasonStatusLoading {
 				t.Errorf("%s: available=%v reason=%q, want %q", action.ID, available, reason, reasonStatusLoading)
 			}
@@ -209,6 +209,13 @@ func TestDefaultActions(t *testing.T) {
 		if slices.Contains([]ActionID{actionCherryPickPreview, actionCherryPickExecute, actionCherryPickMoveDown, actionCherryPickMoveUp}, action.ID) {
 			if available || reason != reasonExplorerClosed {
 				t.Errorf("%s: available=%v reason=%q, want %q", action.ID, available, reason, reasonExplorerClosed)
+			}
+			continue
+		}
+		if slices.Contains([]ActionID{actionRebasePreview, actionRebasePick, actionRebaseReword, actionRebaseEdit, actionRebaseSquash, actionRebaseFixup,
+			actionRebaseDrop, actionRebaseMoveDown, actionRebaseMoveUp, actionRebaseExecute}, action.ID) {
+			if available || reason != reasonPlannerClosed {
+				t.Errorf("%s: available=%v reason=%q, want %q", action.ID, available, reason, reasonPlannerClosed)
 			}
 			continue
 		}

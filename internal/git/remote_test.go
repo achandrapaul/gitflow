@@ -186,6 +186,29 @@ func TestPullRuns(t *testing.T) {
 			t.Fatalf("HEAD parents = %v; want merge of %s and %s", parents[1:], head, remoteOID)
 		}
 	})
+	t.Run("T85 rebase pull replays local commits on the upstream", func(t *testing.T) {
+		fixture := newPublishedFixture(t)
+		fixture.Git("config", "pull.rebase", "false")
+		remoteOID := fixture.PushFromOtherClone("main", "remote", map[string]string{"other.txt": "remote\n"})
+		fixture.Commit("local", map[string]string{"shared.txt": "local\n"})
+		if _, err := newTestRemoteSync(fixture).Pull(ctx, git.PullRebase); err != nil {
+			t.Fatalf("Pull: %v", err)
+		}
+		parents := strings.Fields(fixture.Git("rev-list", "--parents", "-n", "1", "HEAD"))
+		if !slices.Equal(parents[1:], []string{remoteOID}) || fixture.Git("log", "-1", "--format=%s") != "local\n" {
+			t.Fatalf("HEAD parents = %v; want local replayed on %s", parents[1:], remoteOID)
+		}
+	})
+	t.Run("T85 rebase pull conflict pauses a native rebase", func(t *testing.T) {
+		fixture := newPublishedFixture(t)
+		fixture.PushFromOtherClone("main", "remote", map[string]string{"shared.txt": "remote\n"})
+		fixture.Commit("local", map[string]string{"shared.txt": "local\n"})
+		_, err := newTestRemoteSync(fixture).Pull(ctx, git.PullRebase)
+		operation, detectErr := git.NewOperationDetector(fixture.Runner).Active(ctx)
+		if err == nil || detectErr != nil || operation.Kind != git.OperationRebase {
+			t.Fatalf("Pull = %v, operation %+v %v; want native rebase pause", err, operation, detectErr)
+		}
+	})
 }
 
 func TestPushTarget(t *testing.T) {

@@ -382,6 +382,13 @@ func TestSyncRunsWithoutReview(t *testing.T) {
 			observed: func(fixture *gittest.Fixture) string { return branchOID(fixture, "refs/remotes/origin/main") }},
 		{name: "T85 g f fast-forwards the checked-out branch", setup: pushedRemotely, keys: []string{"g", "f"}, title: "Pull (fast-forward only)",
 			observed: func(fixture *gittest.Fixture) string { return branchOID(fixture, "HEAD") }},
+		{name: "T85 g r replays local commits on the upstream", keys: []string{"g", "r"}, title: "Pull (rebase)",
+			setup: func(fixture *gittest.Fixture) string {
+				remoteOID := pushedRemotely(fixture)
+				fixture.Commit("local", map[string]string{"local.txt": "local\n"})
+				return remoteOID
+			},
+			observed: func(fixture *gittest.Fixture) string { return branchOID(fixture, "HEAD~1") }},
 		{name: "T84 g p runs the configured pull", setup: pushedRemotely, keys: []string{"g", "p"}, title: "Pull",
 			observed: func(fixture *gittest.Fixture) string { return branchOID(fixture, "HEAD") }},
 		{name: "T86 g P pushes to the existing upstream", keys: []string{"g", "P"}, title: "Push",
@@ -493,7 +500,8 @@ func TestSyncUnavailable(t *testing.T) {
 			setup: func(fixture *gittest.Fixture) string { fixture.Git("switch", "-q", "--detach"); return "" }},
 		{name: "T139 g u awaits a contract decision", keys: []string{"g", "u"}, wantNotice: "Set upstream: " + reasonUpstreamContractGap},
 		{name: "T139 a u awaits a contract decision", keys: []string{"g", "b", "a", "u"}, wantNotice: "Set upstream: " + reasonUpstreamContractGap},
-		{name: "g r waits for Slice 12", keys: []string{"g", "r"}, wantNotice: "Pull (rebase): " + reasonNotAvailableYet},
+		{name: "g r on detached HEAD", keys: []string{"g", "r"}, wantNotice: "Pull (rebase): " + reasonDetachedHead,
+			setup: func(fixture *gittest.Fixture) string { fixture.Git("switch", "-q", "--detach"); return "" }},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
