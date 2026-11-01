@@ -1,69 +1,69 @@
 # GitFlow v2.3 — Requirement → Test Traceability
 
-This is a **verification index**, not a second normative requirements specification. Normative behavior lives only in `spec/GITFLOW_REQUIREMENTS_V2_3.md`. Each mapping below connects an active stable ID to one or more exact fixture IDs in `tests/SCENARIOS_V2_3.md`. Related acceptance checklist entries are in `tests/ACCEPTANCE_V2_3.md`. All implementation references and results are **not assessed** because no executable GitFlow source or executed test evidence is supplied.
+This is a **verification index**, not a second normative requirements specification. Normative behavior lives only in `spec/GITFLOW_REQUIREMENTS_V2_3.md`. Each mapping below connects an active stable ID to one or more exact fixture IDs in `tests/SCENARIOS_V2_3.md`. Related acceptance checklist entries are in `tests/ACCEPTANCE_V2_3.md`. Rows marked `Not supplied / Not executed` have no implementation or executed evidence yet. Slice 01–09 rows record the real module and test results.
 
 | Stable requirement ID | Domain | Fixture IDs | Implementation module / execution evidence |
 |---|---|---|---|
-| B01 | branches | T01, T11, T12, T13 | Not supplied / Not executed |
-| B02 | branches | T11, T12, T140, T141, T142 | Not supplied / Not executed |
-| B03 | branches | T12, T13 | Not supplied / Not executed |
-| B04 | branches | T13 | Not supplied / Not executed |
-| B05 | branches | T12, T94 | Not supplied / Not executed |
-| B06 | branches | T01, T86 | Not supplied / Not executed |
-| B07 | branches | T55, T105, T128, T136, T137, T138, T139, T151, T152 | Not supplied / Not executed |
-| C01 | changes/commit/file application | T01, T57 | Not supplied / Not executed |
-| C02 | changes/commit/file application | T02, T03, T04, T05, T107 | Not supplied / Not executed |
-| C03 | changes/commit/file application | T03, T04, T107 | Not supplied / Not executed |
-| C04 | changes/commit/file application | T02, T04, T05, T107 | Not supplied / Not executed |
-| C05 | changes/commit/file application | T04, T107 | Not supplied / Not executed |
-| C06 | changes/commit/file application | T02, T04, T05, T51 | Not supplied / Not executed |
-| C07 | changes/commit/file application | T04, T06, T09 | Not supplied / Not executed |
-| C08 | changes/commit/file application | T04, T06, T07, T130 | Not supplied / Not executed |
-| C09 | changes/commit/file application | T08, T30, T31, T109, T147, T150 | Not supplied / Not executed |
-| C10 | changes/commit/file application | T09, T10, T104, T121, T122, T123, T124, T129 | Not supplied / Not executed |
-| C11 | changes/commit/file application | T01, T10, T103, T104, T121, T129 | Not supplied / Not executed |
-| C12 | changes/commit/file application | T05, T24, T26, T50, T117 | Not supplied / Not executed |
-| C13 | changes/commit/file application | T30, T31, T52 | Not supplied / Not executed |
+| B01 | branches | T01, T11, T12, T13 | `internal/git/status.go` branch headers, `internal/app/app.go` header / Pass: TestHeaderBranchIntelligence (T11, T12, T13, unborn), TestStartupRendersS01ReadOnly (T01), TestStatusBranchHeader, go test ./... pass 2026-10-30 |
+| B02 | branches | T11, T12, T140, T141, T142 | `internal/app/app.go` header upstream, `internal/git/remote.go` PushTarget/Push / Partial: TestHeaderBranchIntelligence T11 "No upstream", T12 upstream counts; TestPush (T140, T141, T142), TestFirstPush (T140) pass, go test ./... pass 2026-10-30 |
+| B03 | branches | T12, T13 | `internal/git/branch.go` ResolveBase, AheadBehind / Pass: TestResolveBase, TestUpstreamAndBaseAreIndependent, TestHeaderBranchIntelligence T12, T13, go test ./... pass 2026-10-30 |
+| B04 | branches | T13 | `internal/git/status.go` detached header, `internal/app/app.go` DETACHED label / Pass: TestHeaderBranchIntelligence T13, TestStatusBranchHeader, go test ./... pass 2026-10-30 |
+| B05 | branches | T12, T94 | `internal/git/branch.go` Freshness (FETCH_HEAD mtime), `internal/app/planners.go` Cherry-pick Explorer source selector / Partial: TestFreshness, TestHeaderBranchIntelligence T12, TestCherryPickExplorerBrowsesWithoutCheckout T94 pass, go test -count=1 ./... pass 2026-10-31 |
+| B06 | branches | T01, T86 | `internal/git/operation.go` Active, `internal/app/app.go` paused badge / Partial: TestOperationDetectorActive, TestHeaderBranchIntelligence "paused merge badge" pass, go test ./... pass 2026-10-30; T86 S08 Not implemented |
+| B07 | branches | T55, T105, T128, T136, T137, T138, T139, T151, T152 | `internal/git/branch.go` List, Switch, Delete, `internal/app/branch.go` S11 / Partial: TestBranchesOpenSearchAndInspectWithoutCheckout (T55, T105 inspect, T136), TestBranchSwitch (T105), TestDeleteBranch (T128), TestCreateBranchFromHeadAndFocusedRef (T137, T138), TestListBranches, TestSwitchBranch, TestDeleteBranch (git) pass, go test ./... pass 2026-10-30; T139 Blocked (OPEN_QUESTIONS Q28); T151/T152 Blocked → Slice 13/14 |
+| C01 | changes/commit/file application | T01, T57 | `internal/app/app.go` refresh, `changes.go` S01 / Partial: TestStartupRendersS01ReadOnly (T01) pass with Git snapshot unchanged, go test ./... pass 2026-10-30; T57 Pass: TestCommitFromSingleComposer (single draft, S03 lists the staged index only), go test ./... pass 2026-10-30; T58 Not run: 5-user study cannot be automated |
+| C02 | changes/commit/file application | T02, T03, T04, T05, T107 | `internal/git/status.go` Matches, `internal/app/changes.go` rows, `actions.go` filters 1–4 / Partial: TestStatusFilterTruthTable, TestExplorerFiltersAndLayouts (T02, T03, T05), TestWorktreeDiff (T04 read-only part) pass, go test ./... pass 2026-10-30; T107 Not implemented |
+| C03 | changes/commit/file application | T03, T04, T107 | `internal/git/status.go` FileChange HasStaged/HasUnstaged / Pass: TestStatusFilterTruthTable (T03), TestExplorerFiltersAndLayouts, go test ./... pass 2026-10-30 |
+| C04 | changes/commit/file application | T02, T04, T05, T107 | `internal/git/status.go` Mixed, `internal/app/changes.go` rows / Pass: TestStatusFilterTruthTable, TestExplorerFiltersAndLayouts "MM mixed.txt", go test ./... pass 2026-10-30 |
+| C05 | changes/commit/file application | T04, T107 | `internal/git/diff.go` WorktreeDiff / Partial: TestWorktreeDiff (T04 mixed staged/unstaged sections) pass, go test ./... pass 2026-10-30; T107 mutation part Not implemented |
+| C06 | changes/commit/file application | T02, T04, T05, T51 | `internal/app/changes.go` rows, empty states / Partial: TestExplorerFiltersAndLayouts (T02, T05), TestStartupRendersS01ReadOnly clean state pass, go test ./... pass 2026-10-30; T51 counts under TestSelectAllIncludesHiddenFiles |
+| C07 | changes/commit/file application | T04, T06, T09 | `internal/git/status.go` untracked (-uall, "??"), `diff.go` untracked --no-index, `index.go` Stage / Partial: TestStatusUnusualPaths, TestWorktreeDiff untracked, TestDiffInspection untracked S02, TestIndexerStageUnstage (T06, stage untracked), TestIndexerCommit T09 mixed file, TestCommitFromSingleComposer (T09) pass, go test ./... pass 2026-10-30 |
+| C08 | changes/commit/file application | T04, T06, T07, T130 | `internal/git/index.go` Stage/Unstage, `internal/app/changes.go` runIndexAction / Partial: TestIndexerStageUnstage (T06), TestIndexerRejectsUnknownPath, TestDiffScreenStagesInspectedFile (file level) pass, go test ./... pass 2026-10-30; T07, T130 Blocked: S02 hunk/line keys not yet defined (contract decision pending) |
+| C09 | changes/commit/file application | T08, T30, T31, T109, T147, T150 | `internal/app/changes.go` previewFocused, diffScreen, indexTargets / Partial: TestDiffInspection (T08), TestSelectAllIncludesHiddenFiles (T30, T31), TestStageTargetsCheckedMembersOnly (T109, T147) pass, go test ./... pass 2026-10-30; T150 Not implemented |
+| C10 | changes/commit/file application | T09, T10, T104, T121, T122, T123, T124, T129 | `internal/git/index.go` Commit (`commit -F -`, post-commit verification), `internal/app/changes.go` runCommit / Pass: TestIndexerCommit (T09, T10/T121, T122, T123, T124, T129 amend), TestCommitFromSingleComposer (T09), TestCommitHookFailureKeepsDraftAndRealIndex (T104, T121), TestAmendWarnsAboutPublishedHistory (T129), go test ./... pass 2026-10-30 |
+| C11 | changes/commit/file application | T01, T10, T103, T104, T121, T129 | `internal/app/changes.go` commitAvailability, `internal/git/index.go` ErrStaleReview / Pass: TestCommitRequiresMessageAndStagedChanges, TestCommitRefusesStaleReview (T103), TestIndexerCommit T103 cases, TestCommitHookFailureKeepsDraftAndRealIndex (T104, T121), TestAmendWarnsAboutPublishedHistory (T129), TestStartupRendersS01ReadOnly (T01), go test ./... pass 2026-10-30 |
+| C12 | changes/commit/file application | T05, T24, T26, T50, T117 | `internal/git/index.go` (literal pathspecs, rename, delete, unborn), `internal/app/changes.go` unmerged blocker / Partial (staging only): TestIndexerStageUnstage (untracked, deleted, rename, glob/space paths, unborn) pass, go test ./... pass 2026-10-30; T05/T24/T26/T50/T117 commit parts Blocked → Slice 04 |
+| C13 | changes/commit/file application | T30, T31, T52 | `internal/app/changes.go` View counts / Pass: TestSelectAllIncludesHiddenFiles (T30, T31, T52), go test ./... pass 2026-10-30 |
 | C14 | changes/commit/file application | T47, T48, T49, T50, T56 | Not supplied / Not executed |
-| C15 | changes/commit/file application | T51, T52 | Not supplied / Not executed |
-| C16 | changes/commit/file application | T53, T54, T106 | Not supplied / Not executed |
-| C17 | changes/commit/file application | T30, T31, T52 | Not supplied / Not executed |
-| C18 | changes/commit/file application | T08, T108, T111, T112, T113 | Not supplied / Not executed |
-| C19 | changes/commit/file application | T04, T107 | Not supplied / Not executed |
-| C20 | changes/commit/file application | T108, T109, T111, T112, T113, T147, T150 | Not supplied / Not executed |
-| C21 | changes/commit/file application | T89, T90, T91, T92, T93, T94, T99, T100, T148, T149, T161, T162, T163, T164, T165, T166, T167, T170 | Not supplied / Not executed |
-| C22 | changes/commit/file application | T103, T104, T121, T122, T123, T132 | Not supplied / Not executed |
-| C23 | changes/commit/file application | T124, T125, T126, T134, T143 | Not supplied / Not executed |
-| C24 | changes/commit/file application | T100, T115, T116, T117, T133 | Not supplied / Not executed |
-| H01 | history/planners | T14 | Not supplied / Not executed |
-| H02 | history/planners | T14 | Not supplied / Not executed |
-| H03 | history/planners | T08, T14, T95 | Not supplied / Not executed |
-| H04 | history/planners | T15, T98, T99, T114, T148, T149, T161, T162, T165 | Not supplied / Not executed |
-| H05 | history/planners | T15, T16, T17, T27, T99, T101, T127, T165, T166 | Not supplied / Not executed |
+| C15 | changes/commit/file application | T51, T52 | `internal/app/changes.go` View orientation / Pass: TestSelectAllIncludesHiddenFiles (T51, T52), go test ./... pass 2026-10-30 |
+| C16 | changes/commit/file application | T53, T54, T106 | `internal/prefs/store.go`, `actions.go` v / Partial: TestStoreLoad, TestStoreSaveSurvivesRestart, TestStoreUnavailableLocation, TestLayoutPreference (T106), TestLayoutPreferenceFailures pass, go test ./... pass 2026-10-30; T53/T54 folder layout covered by TestExplorerFiltersAndLayouts; T106 S07 part Not implemented |
+| C17 | changes/commit/file application | T30, T31, T52 | `internal/app/actions.go` S select-all / Pass: TestSelectAllIncludesHiddenFiles (T30, T31, T52), go test ./... pass 2026-10-30 |
+| C18 | changes/commit/file application | T08, T108, T111, T112, T113 | `internal/app/changes.go` focus/Space/range/Esc / Pass: TestFocusNeverSelects (T108, T111), TestShiftRangeKeepsAnchorAndCheckedRows (T112), TestOverlayEscBeforeSelectionClear (T113), TestDiffInspection (T08), go test ./... pass 2026-10-30 |
+| C19 | changes/commit/file application | T04, T107 | `internal/git/diff.go` WorktreeDiff / Partial: TestWorktreeDiff (T04) pass, go test ./... pass 2026-10-30; T107 mutation part Not implemented |
+| C20 | changes/commit/file application | T108, T109, T111, T112, T113, T147, T150 | `internal/app/changes.go` selection model, indexTargets / Partial: TestFocusNeverSelects, TestShiftRangeKeepsAnchorAndCheckedRows, TestOverlayEscBeforeSelectionClear, TestStageTargetsCheckedMembersOnly (T109, T147), TestStageBlocksStaleTargets pass, go test ./... pass 2026-10-30; T150 Not implemented |
+| C21 | changes/commit/file application | T89, T90, T91, T92, T93, T94, T99, T100, T148, T149, T161, T162, T163, T164, T165, T166, T167, T170 | `internal/recovery/restore.go` Preflight/Execute, `internal/git/cherrypick.go` Pick, `internal/app/planners.go`, `internal/app/actions.go` / Partial: TestCherryPickGuards (T89 staged and unstaged tracked edits disable Execute with paths, no stash; T92 collision; T93), TestCherryPickExplorerBrowsesWithoutCheckout T91/T94, TestCherryPickPreviewAndExecute T99, TestCherryPickRestoreExecute T99 pass, go test -count=1 ./... pass 2026-10-31; T90 Partial (ST03 Stash and Proceed offer is Slice 15); T100 Pass (Slice 11, TestSelectiveApplyStagesFiles); T148/T170 file-apply part Partial (Slice 11: TestSelectiveApplyBlockers blocks dirty or staged tracked changes with no stash offer; scenario bodies unavailable); T149, T161–T167 Not executed |
+| C22 | changes/commit/file application | T103, T104, T121, T122, T123, T132 | `internal/git/index.go` Commit tree/message/parent verification, ErrUnexpectedHead, `changes.go` S03 result disclosure / Pass: TestIndexerCommit (T103, T121, T122, T123, T132), TestIndexerCommitRetainsHookChangedIndexInReview, TestCommitRefusesStaleReview (T103), TestCommitDisclosesHookChanges (T122), TestCommitHookFailureKeepsDraftAndRealIndex (T104), go test ./... pass 2026-10-30 |
+| C23 | changes/commit/file application | T124, T125, T126, T134, T143 | `internal/app/actions.go` a v → S10 confirmOverlay, `internal/git/index.go` one-shot --no-verify / Pass: TestIndexerCommit (T124 normal, T124 no-verify, T126 signing), TestCommitWithoutVerificationIsOneShot (T125, T143), TestCommitHookFailureKeepsDraftAndRealIndex (T134), go test ./... pass 2026-10-30 |
+| C24 | changes/commit/file application | T100, T115, T116, T117, T133 | `internal/git/diff.go` CommitFiles/ApplyQueue, `internal/recovery/restore.go` SelectiveApply, `internal/app/planners.go` selectiveApplyScreen, `internal/app/history.go`, `internal/app/actions.go` / Pass: TestSelectiveApplyStagesFiles T100/T115, TestSelectiveApplyKeepsDraft T116, TestSelectiveApplyBlockers T117, TestSelectiveApplyOverlapWarning T116/T117, TestSelectiveApplyPartialFailure T117, TestSelectiveApplyCarriesHistoryFiles, TestApplyQueue T115/T117, TestCommitFilesSupport T117, TestSelectiveApplyPreflight/Execute T115–T117, TestCherryPickModeSeparation T133, go test ./... pass 2026-11-01. Gap: no rename/binary subset is defined, so all renames, copies, binaries, type changes, symlinks and submodules are blocked |
+| H01 | history/planners | T14 | `internal/git/history.go` Open/Page/Stale, `internal/app/history.go` S04 100-row pages, prefetch, windowed rows / Pass: TestHistoryPagination (T14), TestHistoryLargePagination (T14), TestHistoryStale, go test ./... pass 2026-10-30 |
+| H02 | history/planners | T14 | `internal/git/history.go` fixed-tip topo-order paging, graph lanes carried across pages / Pass: TestHistoryPagination (T14, 1210 commits with 110 merges equal `rev-list --topo-order`), TestHistoryGraphLanes, TestHistoryLargePagination, go test ./... pass 2026-10-30 |
+| H03 | history/planners | T08, T14, T95 | `internal/app/history.go` full-OID selection, hidden count / Partial: TestHistoryLargePagination (T14), TestHistoryFilterLoadedOnly, TestHistoryCommitFiles (inspector return), TestHistoryOpenAndReturn pass, go test ./... pass 2026-10-30; T95 selection pass, `g c` handoff Not implemented (Slice 10); T08 is S02 navigation, not re-run for history |
+| H04 | history/planners | T15, T98, T99, T114, T148, T149, T161, T162, T165 | `internal/app/history.go` orderedSelection, `internal/app/actions.go` J/K, `internal/git/cherrypick.go` / Partial: TestCherryPickerPick T15, TestCherryPickHandoffFromHistory T98, TestCherryPickPreviewAndExecute T99/T114 pass, go test -count=1 ./... pass 2026-10-31; T148, T149, T161, T162, T165 Not executed |
+| H05 | history/planners | T15, T16, T17, T27, T99, T101, T127, T165, T166 | `internal/git/cherrypick.go` Pick, `internal/git/operation.go` Completed, `internal/app/operations.go` / Partial: TestCherryPickerPick T15/T27/T127, TestCherryPickPausesIntoDashboard T101/T127, TestCherryPickEmptyPickPauses T27, TestCherryPickPreviewAndExecute T99, TestPausedNavigationLeavesGitUntouched T16/T17 pass, go test -count=1 ./... pass 2026-10-31; T165, T166 Not executed |
 | H06 | history/planners | T18, T19 | Not supplied / Not executed |
 | H07 | history/planners | T18, T25 | Not supplied / Not executed |
 | H08 | history/planners | T20, T28 | Not supplied / Not executed |
-| K01 | keyboard/action dispatch | T08, T29, T96, T114, T151 | Not supplied / Not executed |
-| K02 | keyboard/action dispatch | T08, T96, T111 | Not supplied / Not executed |
-| K03 | keyboard/action dispatch | T16, T20, T28, T97, T113, T163, T168 | Not supplied / Not executed |
-| K04 | keyboard/action dispatch | T56, T87, T110, T144 | Not supplied / Not executed |
-| K05 | keyboard/action dispatch | T56, T57, T110 | Not supplied / Not executed |
-| K06 | keyboard/action dispatch | T29, T32, T88, T143, T144 | Not supplied / Not executed |
-| K07 | keyboard/action dispatch | T29, T87, T88, T144 | Not supplied / Not executed |
-| K08 | keyboard/action dispatch | T08, T105, T109 | Not supplied / Not executed |
-| K09 | keyboard/action dispatch | T30, T31, T32 | Not supplied / Not executed |
-| K30 | keyboard/action dispatch | T84, T85, T86, T87, T88, T135, T136, T137, T139, T140, T145 | Not supplied / Not executed |
-| K31 | keyboard/action dispatch | T29, T32, T87, T110, T143, T144 | Not supplied / Not executed |
-| K32 | keyboard/action dispatch | T102, T103, T104 | Not supplied / Not executed |
-| K33 | keyboard/action dispatch | T14, T95, T105, T135 | Not supplied / Not executed |
-| K34 | keyboard/action dispatch | T55, T105, T136, T152 | Not supplied / Not executed |
-| K35 | keyboard/action dispatch | T51, T53, T106 | Not supplied / Not executed |
-| K36 | keyboard/action dispatch | T30, T31, T108, T111, T112, T113 | Not supplied / Not executed |
-| K37 | keyboard/action dispatch | T30, T31, T108, T111, T112, T113 | Not supplied / Not executed |
-| K38 | keyboard/action dispatch | T08, T31, T109, T110, T147, T150 | Not supplied / Not executed |
-| K39 | keyboard/action dispatch | T89, T90, T91, T92, T93, T94, T95, T148, T149, T161, T162, T163, T170 | Not supplied / Not executed |
-| K40 | keyboard/action dispatch | T96, T97, T99, T100, T114, T115, T133 | Not supplied / Not executed |
-| K41 | keyboard/action dispatch | T105, T109, T110 | Not supplied / Not executed |
+| K01 | keyboard/action dispatch | T08, T29, T96, T114, T151 | `internal/app/overlays.go` (S05/S12 Enter runs highlighted shared action) / Partial: TestKeyDispatch "a menu Enter", "palette Enter" pass, go test ./... pass 2026-10-30; repository-row Enter Not implemented (no rows until status slice) |
+| K02 | keyboard/action dispatch | T08, T96, T111 | `internal/app/changes.go` Space/focus / Partial: TestFocusNeverSelects (T111), TestDiffInspection (T08) pass, go test ./... pass 2026-10-30; T96 Not implemented |
+| K03 | keyboard/action dispatch | T16, T20, T28, T97, T113, T163, T168 | `internal/app/app.go` dispatchKey, `changes.go` composer Esc / Partial: TestKeyDispatch "root Esc", "overlay-first Esc", "g Esc", TestComposerCapturesTypedKeys pass with Git snapshot unchanged, go test ./... pass 2026-10-30; S01 selection clear: TestOverlayEscBeforeSelectionClear (T113) pass, go test ./... pass 2026-10-30 |
+| K04 | keyboard/action dispatch | T56, T87, T110, T144 | `internal/app/registry.go`, `actions.go`, `app.go` runAction / Partial: TestRegistryQueries alias, TestKeyDispatch "palette Enter runs the shared handler", "S01 b is the g b alias" pass, go test ./... pass 2026-10-30 |
+| K05 | keyboard/action dispatch | T56, T57, T110 | `internal/app/overlays.go` renderMenu, `registry.go` Availability / Partial: TestActionAvailability, TestDefaultActions pass, go test ./... pass 2026-10-30; real blockers come with each operation slice |
+| K06 | keyboard/action dispatch | T29, T32, T88, T143, T144 | `internal/app/changes.go` composer capture, `overlays.go` palette query / Pass: TestComposerCapturesTypedKeys (T29), TestKeyDispatch "palette letters are typed", go test ./... pass 2026-10-30 |
+| K07 | keyboard/action dispatch | T29, T87, T88, T144 | `internal/app/app.go` dispatchKey/dispatchSecondKey, `overlays.go` S05/S15 / Pass: TestKeyDispatch "second key is consumed once", "g g is unbound", "a e is unassigned" (T88, T144 S01 only), go test ./... pass 2026-10-30 |
+| K08 | keyboard/action dispatch | T08, T105, T109 | Not implemented: no screens beyond S01 reachable / Blocked on later slices |
+| K09 | keyboard/action dispatch | T30, T31, T32 | `internal/app/actions.go` registers `S` (changes.select-all) disabled / Not implemented |
+| K30 | keyboard/action dispatch | T84, T85, T86, T87, T88, T135, T136, T137, T139, T140, T145 | `internal/app/actions.go` g e/g p/g f/g P/g F entries, `internal/app/branch.go` syncRemote / Partial: TestSyncRunsWithoutReview (T84, T85 g f, T86), TestForcePushWithLease (T87), TestFirstPush (T140), TestKeyDispatch (T88) pass, go test ./... pass 2026-10-30; T85 `g r` Not implemented (Slice 12); T139 Blocked (OPEN_QUESTIONS Q28); T135–T137, T145 owned by other slices. No v2.3 clause text for K30 (line 164 only keeps the ID stable) |
+| K31 | keyboard/action dispatch | T29, T32, T87, T110, T143, T144 | `internal/app/branch.go` syncRemote blockers, forceOverlay / Partial: TestForcePushWithLease (T87), TestSyncBlockers and TestPull (T110 disabled pull, paused operation), TestPush (T110 stale target, failed network push) pass, go test ./... pass 2026-10-30; T29, T32, T143, T144 owned by other slices. No v2.3 clause text for K31 |
+| K32 | keyboard/action dispatch | T102, T103, T104 | Not executed for Slice 06: no v2.3 clause text for K32 (line 164 only keeps the ID stable) and its fixtures are commit scenarios owned by Slice 04; needs confirmation |
+| K33 | keyboard/action dispatch | T14, T95, T105, T135 | `internal/app/actions.go` g h, `/` in S04, `internal/app/history.go` Space/Enter/Esc/G / Partial: TestHistoryOpenAndReturn (T135), TestHistoryLargePagination (T14), TestKeyDispatch (g h h), go test ./... pass 2026-10-30; T95 `g c` handoff and T105 Not executed |
+| K34 | keyboard/action dispatch | T55, T105, T136, T152 | `internal/app/actions.go` branches.open (`g b`, S01 `b`), `/` search, S11 `s` / Partial: TestBranchesOpenSearchAndInspectWithoutCheckout (T55, T136), TestBranchSwitch (T105), TestKeyDispatch "S01 b is the g b alias" pass, go test ./... pass 2026-10-30; T152 Blocked → Slice 14 |
+| K35 | keyboard/action dispatch | T51, T53, T106 | `internal/app/actions.go` registers `v` disabled / Not implemented |
+| K36 | keyboard/action dispatch | T30, T31, T108, T111, T112, T113 | Not implemented (S01 file rows arrive with status slice) |
+| K37 | keyboard/action dispatch | T30, T31, T108, T111, T112, T113 | Not implemented (S01 file rows arrive with status slice) |
+| K38 | keyboard/action dispatch | T08, T31, T109, T110, T147, T150 | `internal/app/changes.go` orientation counts, `app.go` footer `s Stage N files (M hidden)` / Partial: TestStageTargetsCheckedMembersOnly (T109, T147) pass, go test ./... pass 2026-10-30; T110/T150 Not implemented |
+| K39 | keyboard/action dispatch | T89, T90, T91, T92, T93, T94, T95, T148, T149, T161, T162, T163, T170 | `internal/app/actions.go` actionOpenCherryPick, `internal/app/planners.go` / Partial: TestCherryPickGuards T89/T92/T93, TestCherryPickExplorerBrowsesWithoutCheckout T91/T94, TestCherryPickHandoffFromHistory T95 pass, go test -count=1 ./... pass 2026-10-31; T90 Partial (Slice 15); T148, T149, T161–T163, T170 Not executed |
+| K40 | keyboard/action dispatch | T96, T97, T99, T100, T114, T115, T133 | `internal/app/actions.go` Preview/Execute, `internal/app/planners.go` / Partial: TestCherryPickPreviewAndExecute T96/T97/T99/T114, TestCherryPickModeSeparation T133 pass, go test -count=1 ./... pass 2026-10-31; T100/T115 Pass: TestSelectiveApplyStagesFiles (p in the Commit File Inspector opens the Apply Files Planner; a → Apply selected files (staged)), go test ./... pass 2026-11-01 |
+| K41 | keyboard/action dispatch | T105, T109, T110 | Not implemented |
 | N01 | nonfunctional | T46 | Not supplied / Not executed |
 | N02 | nonfunctional | T01, T14, T46, T131 | Not supplied / Not executed |
 | N03 | nonfunctional | T10, T104, T124, T126 | Not supplied / Not executed |
@@ -71,45 +71,45 @@ This is a **verification index**, not a second normative requirements specificat
 | N05 | nonfunctional | T46, T131 | Not supplied / Not executed |
 | N06 | nonfunctional | T01, T46 | Not supplied / Not executed |
 | N07 | nonfunctional | T01, T58, T84, T131 | Not supplied / Not executed |
-| O01 | paused/conflict | T17, T19, T22, T28, T127 | Not supplied / Not executed |
-| O02 | paused/conflict | T16, T17, T101 | Not supplied / Not executed |
-| O03 | paused/conflict | T16, T17, T19, T22 | Not supplied / Not executed |
-| O04 | paused/conflict | T17, T22 | Not supplied / Not executed |
-| O05 | paused/conflict | T20, T21, T28 | Not supplied / Not executed |
-| O06 | paused/conflict | T23, T24, T118, T119, T120 | Not supplied / Not executed |
-| O07 | paused/conflict | T23, T118, T119, T166, T167 | Not supplied / Not executed |
-| O08 | paused/conflict | T16, T17, T25, T110, T164, T168, T169 | Not supplied / Not executed |
-| O09 | paused/conflict | T17, T20, T28, T127 | Not supplied / Not executed |
-| O10 | paused/conflict | T23, T118, T119, T120 | Not supplied / Not executed |
-| U01 | usability | T57, T58 | Not supplied / Not executed |
-| U02 | usability | T57, T58 | Not supplied / Not executed |
-| U03 | usability | T57, T58 | Not supplied / Not executed |
-| U04 | usability | T57, T95, T96, T97, T109, T133, T147, T150, T159, T166 | Not supplied / Not executed |
-| U05 | usability | T104, T109, T110, T117, T159, T160, T168, T169 | Not supplied / Not executed |
-| U06 | usability | T102, T103, T104, T121, T122, T123, T124, T125, T129 | Not supplied / Not executed |
-| U07 | usability | T16, T17, T28, T101 | Not supplied / Not executed |
-| UX-N01 | usability | T57, T95, T109, T110, T133 | Not supplied / Not executed |
-| UX-N02 | usability | T84, T85, T86, T87, T88, T135, T136, T143, T144, T145 | Not supplied / Not executed |
-| UX-N03 | usability | T08, T30, T31, T108, T111, T112, T113, T150 | Not supplied / Not executed |
-| UX-N04 | usability | T55, T95, T105, T135, T136, T151, T152 | Not supplied / Not executed |
-| UX-N05 | usability | T89, T94, T96, T97, T99, T100, T114, T115, T116, T133, T148, T149, T161, T162, T166, T170 | Not supplied / Not executed |
-| UX-N06 | usability | T102, T103, T104, T110, T121, T122, T123, T124, T125, T134, T151 | Not supplied / Not executed |
+| O01 | paused/conflict | T17, T19, T22, T28, T127 | `internal/git/operation.go` OperationDetector.Active, OperationController, `internal/app/operations.go` Paused Operation Dashboard / Partial: TestOperationDetectorDetails, TestPausedMergeDashboardAndResolver (T22, T17 badge), TestPausedNavigationLeavesGitUntouched (T28, T17 restart) pass, go test -count=1 ./... pass 2026-10-30; T19, T127 Not implemented |
+| O02 | paused/conflict | T16, T17, T101 | `internal/app/app.go` dispatchKey Esc pop, `internal/app/operations.go` / Partial: TestPausedNavigationLeavesGitUntouched (T16, T17), TestCherryPickPausesIntoDashboard T101 pass, go test -count=1 ./... pass 2026-10-31 |
+| O03 | paused/conflict | T16, T17, T19, T22 | `internal/git/operation.go` OperationDetector.Active, OperationController, `internal/app/actions.go` operation controls / Partial: TestOperationControllerControls (Continue blocked with conflicts, Skip, Abort, changed operation, hook stderr kept), TestPausedMergeDashboardAndResolver (T22 Skip disabled, Continue after mark resolved), TestPausedRebaseSkipAndAbortNeedConfirmation (Skip/Abort Confirmation, Enter and Esc cancel, c confirms), TestPausedNavigationLeavesGitUntouched (T16, T17) pass, go test -count=1 ./... pass 2026-10-30; T19 Not implemented |
+| O04 | paused/conflict | T17, T22 | `internal/app/operations.go` operationControlAvailability / Pass: TestPausedMergeDashboardAndResolver (T22), TestPausedNavigationLeavesGitUntouched (T17 Skip available for cherry-pick, r Refresh after external resolve), TestPausedRevertShownWithoutControls, go test -count=1 ./... pass 2026-10-30 |
+| O05 | paused/conflict | T20, T21, T28 | Partial: TestPausedNavigationLeavesGitUntouched (T28 root Esc and q leave the paused cherry-pick untouched) pass, go test -count=1 ./... pass 2026-10-30; T20, T21 Not implemented |
+| O06 | paused/conflict | T23, T24, T118, T119, T120 | `internal/git/conflict.go` ConflictReader.Load/Sides, `internal/app/operations.go` Conflict Resolver / Pass: TestConflictSides (T118, T119, T120), TestConflictFallbacks (T23 base / no base, T24 binary, modify/delete, edited markers), TestConflictResolverFallbacksAndEditor (T24 UI), TestPausedMergeDashboardAndResolver (T118 UI), TestPausedRebaseSkipAndAbortNeedConfirmation (T119 UI), go test -count=1 ./... pass 2026-10-30 |
+| O07 | paused/conflict | T23, T118, T119, T166, T167 | `internal/git/conflict.go` Resolve/MarkResolved / Partial: TestConflictResolveRegions (region-only rewrite, not staged, mark resolved stages, no continue), TestPausedMergeDashboardAndResolver (T118 choose incoming, Mark resolved Confirmation, no auto-continue), go test -count=1 ./... pass 2026-10-30; T166, T167 belong to Slice 15, Not implemented |
+| O08 | paused/conflict | T16, T17, T25, T110, T164, T168, T169 | `internal/git/operation.go` Active reads Git metadata every refresh / Partial: TestPausedNavigationLeavesGitUntouched (T16, T17 restart reads real state) pass, go test -count=1 ./... pass 2026-10-30; T25, T110, T164, T168, T169 Not implemented |
+| O09 | paused/conflict | T17, T20, T28, T127 | `internal/app/operations.go` Paused Operation Dashboard / Partial: TestPausedNavigationLeavesGitUntouched (T17, T28) pass, go test -count=1 ./... pass 2026-10-30; T20, T127 Not implemented |
+| O10 | paused/conflict | T23, T118, T119, T120 | `internal/git/conflict.go` Sides/uniqueRef/Load, `internal/app/actions.go` 1 current / 2 base / 3 incoming / Pass: TestConflictSides (T118 main (current) / feature/payments (incoming), T119 main (rebase destination) / replayed commit, T120 detached cherry-pick by OID), TestConflictFallbacks (T23), TestPausedMergeDashboardAndResolver, TestPausedRebaseSkipAndAbortNeedConfirmation, go test -count=1 ./... pass 2026-10-30 |
+| U01 | usability | T57, T58 | Not measured: usability study not run |
+| U02 | usability | T57, T58 | Not measured: usability study not run |
+| U03 | usability | T57, T58 | Not measured: usability study not run |
+| U04 | usability | T57, T95, T96, T97, T109, T133, T147, T150, T159, T166 | `internal/app/operations.go` (Paused Operation Dashboard shows operation, branch, commit, progress, conflicted files, control availability with reasons and next step) / Partial: TestPausedMergeDashboardAndResolver, TestPausedRevertShownWithoutControls pass, go test -count=1 ./... pass 2026-10-30; listed fixtures T57–T166 Not executed for U04 |
+| U05 | usability | T104, T109, T110, T117, T159, T160, T168, T169 | `internal/app/app.go` mutate, status reconcile, `changes.go` outcome text / Partial: TestStageTargetsCheckedMembersOnly (T109), TestStageFailureShowsRealState, TestStageIsSerialised, TestFocusMovesToNearestSurvivor pass, go test ./... pass 2026-10-30; T104 Pass: TestCommitHookFailureKeepsDraftAndRealIndex; T117 Pass: TestSelectiveApplyPartialFailure (applied / failed / not attempted plus the actual tracked state, no rollback claim) 2026-11-01; T110/T159/T160/T168/T169 Not implemented |
+| U06 | usability | T102, T103, T104, T121, T122, T123, T124, T125, T129 | `internal/app/changes.go` S03 composer/review/result, `actions.go` Commit/No-verify/Amend / Pass: TestCommitFromSingleComposer (T102), TestCommitRefusesStaleReview (T103), TestCommitHookFailureKeepsDraftAndRealIndex (T104, T121), TestCommitDisclosesHookChanges (T122), TestIndexerCommit (T123, T124), TestCommitWithoutVerificationIsOneShot (T125), TestAmendWarnsAboutPublishedHistory (T129), go test ./... pass 2026-10-30 |
+| U07 | usability | T16, T17, T28, T101 | `internal/app/operations.go`, `internal/app/app.go` / Partial: TestPausedNavigationLeavesGitUntouched (T16, T17, T28), TestCherryPickPausesIntoDashboard T101 pass, go test -count=1 ./... pass 2026-10-31 |
+| UX-N01 | usability | T57, T95, T109, T110, T133 | `internal/app/app.go` View header/footer, `changes.go` orientation line / Partial: TestStartupRendersS01ReadOnly, TestResponsiveRender (T131, S01 only) pass, go test ./... pass 2026-10-30; branch name Not implemented |
+| UX-N02 | usability | T84, T85, T86, T87, T88, T135, T136, T143, T144, T145 | `internal/app/actions.go` Stage/Unstage share registry IDs and preflight across S01 keys, S02 aliases and menus / Partial: TestKeyDispatch, TestDefaultActions pass, go test ./... pass 2026-10-30; listed fixtures belong to later slices, Not implemented |
+| UX-N03 | usability | T08, T30, T31, T108, T111, T112, T113, T150 | `internal/app/changes.go` View orientation / Partial: TestDiffInspection (T08), TestSelectAllIncludesHiddenFiles (T30, T31), TestFocusNeverSelects, TestShiftRangeKeepsAnchorAndCheckedRows, TestOverlayEscBeforeSelectionClear pass, go test ./... pass 2026-10-30; T150 Not implemented |
+| UX-N04 | usability | T55, T95, T105, T135, T136, T151, T152 | `internal/app/branch.go` S11 labelled search scope, inspector, blocker explanations / Partial: TestBranchesOpenSearchAndInspectWithoutCheckout (T55, T105, T136), TestBranchSwitch pass, go test ./... pass 2026-10-30; T95, T135 Not implemented; T151/T152 Blocked → Slice 13/14 |
+| UX-N05 | usability | T89, T94, T96, T97, T99, T100, T114, T115, T116, T133, T148, T149, T161, T162, T166, T170 | `internal/app/planners.go`, `internal/app/actions.go`, `internal/recovery/restore.go` / Partial: TestCherryPickGuards T89, TestCherryPickExplorerBrowsesWithoutCheckout T94, TestCherryPickPreviewAndExecute T96/T97/T99/T114, TestCherryPickModeSeparation T133 pass, go test -count=1 ./... pass 2026-10-31; T100, T115, T116 Pass (Slice 11 selective-apply tests, 2026-11-01); T148/T170 file-apply part Partial; T149, T161, T162, T166 Not executed |
+| UX-N06 | usability | T102, T103, T104, T110, T121, T122, T123, T124, T125, T134, T151 | `internal/app/changes.go` S03 review view, runCommit outcome text, `overlays.go` S10 / Partial: TestCommitFromSingleComposer (T102), TestCommitRefusesStaleReview (T103), TestCommitHookFailureKeepsDraftAndRealIndex (T104, T121, T134), TestCommitDisclosesHookChanges (T122), TestIndexerCommit (T123, T124), TestCommitWithoutVerificationIsOneShot (T125), go test ./... pass 2026-10-30; T110 and T151 Not implemented |
 
-| B08 | branches | T137, T138, T151 | Not supplied / Not executed |
-| B09 | branches/push | T140, T141, T142 | Not supplied / Not executed |
-| K42 | keyboard/action dispatch | T144 | Not supplied / Not executed |
-| K43 | keyboard/action dispatch | T143, T144 | Not supplied / Not executed |
-| K44 | keyboard/action dispatch | T137, T138, T151 | Not supplied / Not executed |
-| K45 | keyboard/action dispatch | T139, T140, T141, T142 | Not supplied / Not executed |
-| K46 | keyboard/action dispatch | T135, T136, T145, T146 | Not supplied / Not executed |
-| ST01 | stash (read-only) | T145, T146, T169 | Not supplied / Not executed |
+| B08 | branches | T137, T138, T151 | `internal/git/branch.go` ValidateName, Create (`branch --no-track`, start OID revalidated), `internal/app/overlays.go` nameInput / Partial: TestCreateBranchFromHeadAndFocusedRef (T137, T138), TestCreateBranchBlocksInvalidNames, TestCreateBranchBlocksStaleAndMissingStart (T138), TestValidateBranchName, TestCreateBranch, TestCreateBranchBlocksInvalidState pass, go test ./... pass 2026-10-30; T151 post-create Switch? prompt Blocked → Slice 13 |
+| B09 | branches/push | T140, T141, T142 | `internal/git/remote.go` PushTarget, Push, `internal/app/actions.go` g P first-push review / Partial: TestPushTarget, TestPush (T140 tracking confirmed and honored later; T141 missing origin, divergent destination, rejected and failed network push never configure tracking; T142 non-origin upstream honored), TestFirstPush (T140), TestSyncBlockers (T141), TestSyncRunsWithoutReview (T142) pass, go test ./... pass 2026-10-30; `g u`/`a u` Blocked (OPEN_QUESTIONS Q28) |
+| K42 | keyboard/action dispatch | T144 | `internal/app/registry.go`, `overlays.go` / Partial: TestNewRegistryRejectsInvalidActions, TestRegistryQueries "second key is case-sensitive", TestKeyDispatch "g P", "a e" pass, go test ./... pass 2026-10-30; S11/S06/S03 contexts Not implemented |
+| K43 | keyboard/action dispatch | T143, T144 | `internal/app/actions.go` actionCommitNoVerify `a v` in ScopeComposer, `overlays.go` confirmOverlay / Partial: TestDefaultActions (`a v` binding), TestCommitWithoutVerificationIsOneShot (T143); T144 Not implemented, go test ./... pass 2026-10-30 |
+| K44 | keyboard/action dispatch | T137, T138, T151 | `internal/app/actions.go` `g n` (HEAD), S11 `a n` (focused ref) / Partial: TestCreateBranchFromHeadAndFocusedRef (T137, T138), TestDefaultActions pass, go test ./... pass 2026-10-30; T151 Blocked → Slice 13 |
+| K45 | keyboard/action dispatch | T139, T140, T141, T142 | `internal/app/actions.go` g P, g u/a u availability / Partial: TestFirstPush (T140), TestSyncBlockers (T141), TestSyncRunsWithoutReview (T142), TestPush pass, go test ./... pass 2026-10-30; T139 Blocked: TestSyncUnavailable records `g u`/`a u` disabled (OPEN_QUESTIONS Q28) |
+| K46 | keyboard/action dispatch | T135, T136, T145, T146 | `internal/app/actions.go` g s → retained S16, `internal/app/branch.go` stashScreen / Partial: TestStashListReadOnly (T145 g s, reopen keeps focus, filter, Esc/q back), TestStashListEmptyAndError (T146), TestStashKeyNeverStagesOrSkips (g s from S01/S08 never Stage/Skip; g S does not open S16), TestDefaultActions pass, go test ./... pass 2026-10-30; T135, T136 owned by other slices |
+| ST01 | stash (read-only) | T145, T146, T169 | `internal/git/stash.go` List (`stash list -z`), `internal/app/branch.go` stashScreen / Partial: TestStashList (order, stash@{n} refs, OIDs, messages, dates, empty, bad refs/stash error, no mutation), TestStashListReadOnly (T145), TestStashListEmptyAndError (T146), TestNoGenericStashMutation (no create/apply/pop/drop/clear; ST02/ST03 actions not available yet) pass, go test ./... pass 2026-10-30; no branch column (Git stores none reliably); T169 owned by Slice 15 |
 
 | B10 | branches/main update | T155, T156, T157, T158 | Not supplied / Not executed |
-| B11 | branches/switch | T151, T152, T153, T154 | Not supplied / Not executed |
+| B11 | branches/switch | T151, T152, T153, T154 | `internal/git/branch.go` Switch blockers, `internal/app/actions.go` blocker review / Partial: TestBranchSwitch (dirty paths with `s`/Esc offer, unmerged, paused operation, untracked collision), TestSwitchBranch (git) pass, go test ./... pass 2026-10-30; T151–T154 Blocked → Slice 13/14 (Stash and Switch shows Not available yet) |
 | K47 | keyboard/action dispatch | T151, T152, T155, T156, T157 | Not supplied / Not executed |
 | ST02 | branch-switch-only stash recovery | T152, T153, T154 | Not supplied / Not executed |
 | ST03 | whole-commit cherry-pick stash/restore and rollback | T90, T148, T149, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170 | Not supplied / Not executed |
-| UX-N07 | navigation continuity | T159, T160 | Not supplied / Not executed |
+| UX-N07 | navigation continuity | T159, T160 | `internal/app/changes.go` diffScreen Esc return keeps focus and selection / Partial: TestDiffInspection pass, go test ./... pass 2026-10-30; T159/T160 Not implemented |
 
 ## Reserved, not normative
 - **K29:** historical reserved identifier; intentionally no active binding, action or test. Never reassign without separately approved versioned change.
