@@ -330,6 +330,28 @@ func (app *App) syncAvailability(needsUpstream bool) (bool, string) {
 	return true, ""
 }
 
+func (app *App) switchBranch(name, ref, oid string) tea.Cmd {
+	return app.mutate(func(ctx context.Context) (func(app *App), error) {
+		var blocked *git.SwitchBlocked
+		if err := app.deps.Branches.Switch(ctx, name, oid); !errors.As(err, &blocked) {
+			return nil, err
+		}
+		return func(app *App) {
+			app.notice = ""
+			review := &confirmOverlay{title: fmt.Sprintf(switchBlockedTitle, ref), command: slices.Concat(switchCommand, []string{name}),
+				consequences: append([]string{switchBlockerText[blocked.Blocker]}, blocked.Paths...), hints: blockedHints}
+			if blocked.Blocker == git.BlockedDirty {
+				review.confirmKey, review.hints = keyStashAndSwitch, stashAndSwitchHints
+				review.onConfirm = func(app *App) tea.Cmd {
+					stashAndSwitch, _ := app.registry.ByID(actionStashAndSwitch)
+					return app.runAction(stashAndSwitch)
+				}
+			}
+			app.overlay = review
+		}, nil
+	}, RefreshAll, fmt.Sprintf(switchedNotice, name))
+}
+
 func (app *App) syncRemote(title string, command []string, work func(ctx context.Context) (string, func(app *App), error)) tea.Cmd {
 	return app.mutate(func(ctx context.Context) (func(app *App), error) {
 		summary, review, err := work(ctx)

@@ -238,6 +238,57 @@ func TestCreateBranchBlocksInvalidState(t *testing.T) {
 	}
 }
 
+func TestCompareMain(t *testing.T) {
+	testCases := []struct {
+		name        string
+		setup       func(fixture *gittest.Fixture)
+		wantRemote  bool
+		wantCounts  git.AheadBehind
+		wantMissing bool
+	}{
+		{name: "synchronized with cached origin/main", wantRemote: true},
+		{name: "T155 behind cached origin/main", setup: func(fixture *gittest.Fixture) {
+			fixture.PushFromOtherClone("main", "remote", map[string]string{"other.txt": "remote\n"})
+			fixture.Git("fetch", "-q", "origin")
+		}, wantRemote: true, wantCounts: git.AheadBehind{Behind: 1}},
+		{name: "T158 diverged from cached origin/main", setup: func(fixture *gittest.Fixture) {
+			fixture.PushFromOtherClone("main", "remote", map[string]string{"other.txt": "remote\n"})
+			fixture.Git("fetch", "-q", "origin")
+			fixture.Commit("local", map[string]string{"shared.txt": "local\n"})
+		}, wantRemote: true, wantCounts: git.AheadBehind{Ahead: 1, Behind: 1}},
+		{name: "T158 no cached origin/main", setup: func(fixture *gittest.Fixture) {
+			fixture.Git("remote", "remove", "origin")
+		}},
+		{name: "T158 missing local main", setup: func(fixture *gittest.Fixture) {
+			fixture.Git("switch", "-q", "-c", "trunk")
+			fixture.Git("branch", "-q", "-D", "main")
+		}, wantMissing: true},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			fixture := newPublishedFixture(t)
+			if testCase.setup != nil {
+				testCase.setup(fixture)
+			}
+			before := fixture.Snapshot()
+			comparison, err := newTestBrancher(fixture).CompareMain(context.Background())
+			if testCase.wantMissing {
+				if !errors.Is(err, git.ErrNoLocalMain) {
+					t.Fatalf("CompareMain = %+v, %v; want %v", comparison, err, git.ErrNoLocalMain)
+				}
+				return
+			}
+			want := git.MainComparison{LocalOID: refOID(fixture, "refs/heads/main"), RemoteFound: testCase.wantRemote, Counts: testCase.wantCounts}
+			if err != nil || comparison != want {
+				t.Fatalf("CompareMain = %+v, %v; want %+v", comparison, err, want)
+			}
+			if fixture.Snapshot() != before {
+				t.Fatal("CompareMain changed the repository")
+			}
+		})
+	}
+}
+
 func TestSwitchBranch(t *testing.T) {
 	testCases := []struct {
 		name        string

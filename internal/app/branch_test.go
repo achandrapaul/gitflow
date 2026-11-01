@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -232,6 +233,10 @@ func TestCreateBranchFromHeadAndFocusedRef(t *testing.T) {
 			if checkedOut(fixture) != "main" || gitflowApp.notice != "Created "+testCase.branch+" · Still on main" {
 				t.Fatalf("checked out %q notice %q", checkedOut(fixture), gitflowApp.notice)
 			}
+			if _, prompted := gitflowApp.overlay.(*switchPrompt); !prompted {
+				t.Fatalf("overlay after create = %T, want the Switch? prompt", gitflowApp.overlay)
+			}
+			pressAndDrain(gitflowApp, "esc")
 			if upstream := fixture.Git("for-each-ref", "--format=%(upstream)", "refs/heads/"+testCase.branch); strings.TrimSpace(upstream) != "" {
 				t.Fatalf("created branch has upstream %q", upstream)
 			}
@@ -289,6 +294,298 @@ func TestCreateBranchBlocksStaleAndMissingStart(t *testing.T) {
 	pressAndDrain(unbornApp, "g", "n")
 	if overlayID(unbornApp) != "" || unbornApp.notice != "Create local branch: "+reasonNoCommits {
 		t.Fatalf("unborn HEAD g n = overlay %s notice %q", overlayID(unbornApp), unbornApp.notice)
+	}
+}
+
+const overlayBorder = "│"
+
+func unwrappedOverlayText(t *testing.T, gitflowApp *App) string {
+	t.Helper()
+	return strings.Join(strings.Fields(strings.ReplaceAll(overlayText(t, gitflowApp), overlayBorder, " ")), " ")
+}
+
+func checkoutState(fixture *gittest.Fixture) string {
+	return fixture.Git("status", "--porcelain=v2", "-z", "--untracked-files=all") + fixture.Git("ls-files", "--stage") + checkedOut(fixture) + branchOID(fixture, "HEAD")
+}
+
+func behindOrigin(fixture *gittest.Fixture) string {
+	remoteOID := fixture.PushFromOtherClone("main", "remote", map[string]string{"remote.txt": "remote\n"})
+	fixture.Git("fetch", "-q", "origin")
+	return remoteOID
+}
+
+func createFromMain(t *testing.T, gitflowApp *App, name string) {
+	t.Helper()
+	branches := openBranches(t, gitflowApp, "g", "b")
+	focusBranch(t, gitflowApp, branches, "refs/heads/feature")
+	pressAndDrain(gitflowApp, "a", "m")
+	if _, named := gitflowApp.overlay.(*nameInput); !named {
+		t.Fatalf("a m opened %T (error %q), want the name input", gitflowApp.overlay, gitflowApp.errorText)
+	}
+	typeText(gitflowApp, name)
+	pressAndDrain(gitflowApp, "enter")
+}
+
+func TestCreateFromMainChoices(t *testing.T) {
+	testCases := []struct {
+		name       string
+		setup      func(fixture *gittest.Fixture) string
+		choice     string
+		wantText   []string
+		wantUpdate bool
+		wantBranch string
+	}{
+		{name: "T155 c creates from unchanged local main without network", setup: func(fixture *gittest.Fixture) string {
+			behindOrigin(fixture)
+			fixture.Git("switch", "-q", "feature")
+			fixture.Dirty("differs.txt")
+			fixture.Git("remote", "set-url", "origin", filepath.Join(fixture.Dir, "unreachable.git"))
+			return ""
+		}, choice: "c", wantText: []string{fmt.Sprintf(mainBehindText, 1), updateAndCreateHints}, wantBranch: "feature"},
+		{name: "T156 p from dirty feature updates local main only", setup: func(fixture *gittest.Fixture) string {
+			remoteOID := behindOrigin(fixture)
+			fixture.Git("switch", "-q", "feature")
+			fixture.Write("shared.txt", "staged\n")
+			fixture.Git("add", "shared.txt")
+			fixture.Dirty("differs.txt")
+			return remoteOID
+		}, choice: "p", wantText: []string{updateAndCreateHints}, wantUpdate: true, wantBranch: "feature"},
+		{name: "T157 p on clean main pulls fast-forward only", setup: behindOrigin, choice: "p", wantUpdate: true, wantBranch: "main"},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			var remoteOID string
+			gitflowApp, fixture := newBranchApp(t, func(fixture *gittest.Fixture) { remoteOID = testCase.setup(fixture) })
+			oldMain := branchOID(fixture, "refs/heads/main")
+			before := checkoutState(fixture)
+
+			createFromMain(t, gitflowApp, "topic")
+			view := unwrappedOverlayText(t, gitflowApp)
+			for _, want := range testCase.wantText {
+				if !strings.Contains(view, want) {
+					t.Errorf("choice prompt missing %q:\n%s", want, view)
+				}
+			}
+			if branchOID(fixture, "refs/heads/main") != oldMain || strings.Contains(fixture.Git("branch", "--list", "topic"), "topic") {
+				t.Fatal("the choice prompt changed Git before a choice")
+			}
+			pressAndDrain(gitflowApp, testCase.choice)
+
+			wantStart := oldMain
+			if testCase.wantUpdate {
+				wantStart = remoteOID
+			}
+			if got := branchOID(fixture, "refs/heads/topic"); got != wantStart || branchOID(fixture, "refs/heads/main") != wantStart {
+				t.Fatalf("topic %s main %s, want both %s (error %q)", got, branchOID(fixture, "refs/heads/main"), wantStart, gitflowApp.errorText)
+			}
+			if checkedOut(fixture) != testCase.wantBranch || gitflowApp.notice != "Created topic · Still on "+testCase.wantBranch {
+				t.Fatalf("checked out %q notice %q", checkedOut(fixture), gitflowApp.notice)
+			}
+			if testCase.wantBranch == "feature" && checkoutState(fixture) != before {
+				t.Fatal("feature checkout, index or worktree changed")
+			}
+			if stashes := fixture.Git("stash", "list"); stashes != "" || upstreamOf(fixture, "topic") != "" {
+				t.Fatalf("stash %q upstream %q, want neither", stashes, upstreamOf(fixture, "topic"))
+			}
+			if _, prompted := gitflowApp.overlay.(*switchPrompt); !prompted {
+				t.Fatalf("overlay after create = %T, want the Switch? prompt", gitflowApp.overlay)
+			}
+		})
+	}
+}
+
+func TestCreateFromMainWithoutPrompt(t *testing.T) {
+	testCases := []struct {
+		name  string
+		setup func(fixture *gittest.Fixture)
+	}{
+		{name: "synchronized with cached origin/main"},
+		{name: "ahead of cached origin/main", setup: func(fixture *gittest.Fixture) { fixture.Commit("local", map[string]string{"local.txt": "local\n"}) }},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			gitflowApp, fixture := newBranchApp(t, testCase.setup)
+			createFromMain(t, gitflowApp, "topic")
+			if got := branchOID(fixture, "refs/heads/topic"); got != branchOID(fixture, "refs/heads/main") {
+				t.Fatalf("topic at %s, want local main (error %q)", got, gitflowApp.errorText)
+			}
+			if _, prompted := gitflowApp.overlay.(*switchPrompt); !prompted {
+				t.Fatalf("overlay = %T, want the Switch? prompt with no behind warning", gitflowApp.overlay)
+			}
+		})
+	}
+}
+
+func TestCreateFromMainShowsComparison(t *testing.T) {
+	gitflowApp, fixture := newBranchApp(t, func(fixture *gittest.Fixture) { behindOrigin(fixture) })
+	pressAndDrain(gitflowApp, "a", "m")
+	view := flattenedView(gitflowApp)
+	for _, want := range []string{"refs/heads/main", branchOID(fixture, "refs/heads/main"), fmt.Sprintf(mainComparisonFormat, 0, 1)} {
+		if !strings.Contains(view, want) {
+			t.Errorf("S01 a m name input missing %q:\n%s", want, view)
+		}
+	}
+	pressAndDrain(gitflowApp, "esc")
+	if overlayID(gitflowApp) != "" {
+		t.Fatalf("Esc left overlay %s", overlayID(gitflowApp))
+	}
+}
+
+func TestCreateFromMainDirectOnly(t *testing.T) {
+	testCases := []struct {
+		name     string
+		setup    func(fixture *gittest.Fixture)
+		pressP   bool
+		wantText []string
+	}{
+		{name: "T158 diverged main", setup: func(fixture *gittest.Fixture) {
+			behindOrigin(fixture)
+			fixture.Commit("local", map[string]string{"local.txt": "local\n"})
+		}, wantText: []string{mainDivergedText}},
+		{name: "T158 no cached origin/main", setup: func(fixture *gittest.Fixture) {
+			fixture.Git("remote", "remove", "origin")
+		}, wantText: []string{mainRemoteMissing}},
+		{name: "T157 dirty main blocks the update", setup: func(fixture *gittest.Fixture) {
+			behindOrigin(fixture)
+			fixture.Dirty("shared.txt")
+		}, pressP: true, wantText: []string{syncBlockerText[git.SyncDirty], "shared.txt"}},
+		{name: "T158 network failure", setup: func(fixture *gittest.Fixture) {
+			behindOrigin(fixture)
+			fixture.Git("remote", "set-url", "origin", filepath.Join(fixture.Dir, "unreachable.git"))
+		}, pressP: true, wantText: []string{mainUpdateFailed}},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			gitflowApp, fixture := newBranchApp(t, testCase.setup)
+			before := fixture.Snapshot()
+			createFromMain(t, gitflowApp, "topic")
+			if testCase.pressP {
+				pressAndDrain(gitflowApp, "p")
+			}
+			view := unwrappedOverlayText(t, gitflowApp)
+			for _, want := range append(testCase.wantText, createDirectlyHints) {
+				if !strings.Contains(view, want) {
+					t.Errorf("prompt missing %q:\n%s", want, view)
+				}
+			}
+			if strings.Contains(view, updateAndCreateHints) {
+				t.Errorf("update offered:\n%s", view)
+			}
+			pressAndDrain(gitflowApp, "p")
+			if fixture.Snapshot() != before {
+				t.Fatal("refused update changed the repository")
+			}
+			pressAndDrain(gitflowApp, "c")
+			if got := branchOID(fixture, "refs/heads/topic"); got != branchOID(fixture, "refs/heads/main") {
+				t.Fatalf("topic at %s, want unchanged local main (error %q)", got, gitflowApp.errorText)
+			}
+		})
+	}
+}
+
+func TestCreateFromMainFailures(t *testing.T) {
+	t.Run("T158 missing local main", func(t *testing.T) {
+		gitflowApp, fixture := newBranchApp(t, func(fixture *gittest.Fixture) {
+			fixture.Git("switch", "-q", "feature")
+			fixture.Git("branch", "-q", "-D", "main")
+		})
+		before := fixture.Snapshot()
+		pressAndDrain(gitflowApp, "a", "m")
+		if overlayID(gitflowApp) != "" || !strings.Contains(gitflowApp.errorText, git.ErrNoLocalMain.Error()) {
+			t.Fatalf("overlay %s error %q, want %q", overlayID(gitflowApp), gitflowApp.errorText, git.ErrNoLocalMain)
+		}
+		if fixture.Snapshot() != before {
+			t.Fatal("missing main changed the repository")
+		}
+	})
+	t.Run("T158 update succeeds then create fails", func(t *testing.T) {
+		var remoteOID string
+		gitflowApp, fixture := newBranchApp(t, func(fixture *gittest.Fixture) {
+			remoteOID = behindOrigin(fixture)
+			fixture.Git("switch", "-q", "feature")
+		})
+		createFromMain(t, gitflowApp, "topic")
+		featureOID := branchOID(fixture, "refs/heads/feature")
+		fixture.Git("branch", "topic", "feature")
+		pressAndDrain(gitflowApp, "p")
+		if branchOID(fixture, "refs/heads/main") != remoteOID || branchOID(fixture, "refs/heads/topic") != featureOID {
+			t.Fatalf("main %s topic %s, want main updated to %s and topic untouched", branchOID(fixture, "refs/heads/main"), branchOID(fixture, "refs/heads/topic"), remoteOID)
+		}
+		if want := fmt.Sprintf("local main updated to %s; branch topic was not created", shortOID(remoteOID)); !strings.Contains(gitflowApp.errorText, want) {
+			t.Fatalf("error %q, want %q", gitflowApp.errorText, want)
+		}
+		if overlayID(gitflowApp) != "" || checkedOut(fixture) != "feature" {
+			t.Fatalf("overlay %s checked out %q after failed create", overlayID(gitflowApp), checkedOut(fixture))
+		}
+	})
+	t.Run("Esc cancels the choice", func(t *testing.T) {
+		gitflowApp, fixture := newBranchApp(t, func(fixture *gittest.Fixture) { behindOrigin(fixture) })
+		before := fixture.Snapshot()
+		createFromMain(t, gitflowApp, "topic")
+		pressAndDrain(gitflowApp, "esc")
+		if overlayID(gitflowApp) != "" || fixture.Snapshot() != before {
+			t.Fatal("Esc did not cancel without Git changes")
+		}
+	})
+}
+
+func TestPostCreateSwitchPrompt(t *testing.T) {
+	gitflowApp, fixture := newBranchApp(t, nil)
+	featureOID := branchOID(fixture, "refs/heads/feature")
+
+	pressAndDrain(gitflowApp, "g", "n")
+	typeText(gitflowApp, "stay")
+	pressAndDrain(gitflowApp, "enter")
+	if view := flattenedView(gitflowApp); !strings.Contains(view, fmt.Sprintf(switchPromptTitle, "stay")) || !strings.Contains(view, switchPromptHints) {
+		t.Fatalf("Switch? prompt missing:\n%s", view)
+	}
+	pressAndDrain(gitflowApp, "x", "esc")
+	if overlayID(gitflowApp) != "" || checkedOut(fixture) != "main" || branchOID(fixture, "refs/heads/stay") != branchOID(fixture, "HEAD") {
+		t.Fatalf("T151 g n Esc: overlay %s checked out %q", overlayID(gitflowApp), checkedOut(fixture))
+	}
+
+	branches := openBranches(t, gitflowApp, "g", "b")
+	focusBranch(t, gitflowApp, branches, "refs/heads/feature")
+	pressAndDrain(gitflowApp, "a", "n")
+	typeText(gitflowApp, "from-feature")
+	pressAndDrain(gitflowApp, "enter", "s")
+	if checkedOut(fixture) != "from-feature" || branchOID(fixture, "HEAD") != featureOID || gitflowApp.notice != "Switched to from-feature" {
+		t.Fatalf("T151 a n s: checked out %q at %s notice %q", checkedOut(fixture), branchOID(fixture, "HEAD"), gitflowApp.notice)
+	}
+
+	pressAndDrain(gitflowApp, "a", "m")
+	typeText(gitflowApp, "from-main")
+	pressAndDrain(gitflowApp, "enter", "enter")
+	if checkedOut(fixture) != "from-main" || branchOID(fixture, "HEAD") != branchOID(fixture, "refs/heads/main") {
+		t.Fatalf("T151 a m Enter: checked out %q", checkedOut(fixture))
+	}
+	for _, branch := range []string{"stay", "from-feature", "from-main"} {
+		if upstream := upstreamOf(fixture, branch); upstream != "" {
+			t.Errorf("%s has upstream %q", branch, upstream)
+		}
+	}
+	if remoteRefs := fixture.Git("--git-dir", fixture.Remote, "for-each-ref", "--format=%(refname)"); remoteRefs != "refs/heads/main\n" {
+		t.Fatalf("remote refs changed:\n%s", remoteRefs)
+	}
+}
+
+func TestPostCreateSwitchBlocked(t *testing.T) {
+	gitflowApp, fixture := newBranchApp(t, func(fixture *gittest.Fixture) { fixture.Dirty("differs.txt") })
+	branches := openBranches(t, gitflowApp, "g", "b")
+	focusBranch(t, gitflowApp, branches, "refs/heads/feature")
+	pressAndDrain(gitflowApp, "a", "n")
+	typeText(gitflowApp, "from-feature")
+	pressAndDrain(gitflowApp, "enter")
+	before := fixture.Snapshot()
+	pressAndDrain(gitflowApp, "s")
+	view := flattenedView(gitflowApp)
+	for _, want := range []string{switchBlockerText[git.BlockedDirty], "differs.txt", stashAndSwitchHints} {
+		if !strings.Contains(view, want) {
+			t.Errorf("blocked switch missing %q:\n%s", want, view)
+		}
+	}
+	if fixture.Snapshot() != before || checkedOut(fixture) != "main" {
+		t.Fatal("blocked switch changed Git state")
 	}
 }
 

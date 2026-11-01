@@ -13,6 +13,8 @@ const (
 	originRemote       = "origin"
 	missingConfigExit  = 1
 	pullStrategyFormat = `^(pull\.(rebase|ff)|branch\.%s\.rebase)$`
+	mainBranch         = "main"
+	mainFetchRefspec   = mainBranch + ":" + LocalMainRef
 )
 
 var (
@@ -154,18 +156,8 @@ func (r *RemoteSync) Pull(ctx context.Context, mode PullMode) (string, error) {
 	if !upstream.Set {
 		return "", &SyncBlocked{Blocker: SyncNoUpstream}
 	}
-	operation, err := r.operations.Active(ctx)
-	if err != nil {
+	if err := r.treeBlocker(ctx, status); err != nil {
 		return "", fmt.Errorf("pull %s: %w", status.Branch, err)
-	}
-	if operation.Active() {
-		return "", &SyncBlocked{Blocker: SyncOperation}
-	}
-	if len(status.Unmerged) > 0 {
-		return "", &SyncBlocked{Blocker: SyncUnmerged, Paths: status.Unmerged}
-	}
-	if len(status.TrackedDirtyPaths) > 0 {
-		return "", &SyncBlocked{Blocker: SyncDirty, Paths: status.TrackedDirtyPaths}
 	}
 	if mode == PullConfigured && status.TrackingKnown && status.Tracking.Ahead > 0 && status.Tracking.Behind > 0 {
 		_, err := r.runner.Read(ctx, "config", "--get-regexp", fmt.Sprintf(pullStrategyFormat, regexp.QuoteMeta(status.Branch)))
@@ -182,6 +174,55 @@ func (r *RemoteSync) Pull(ctx context.Context, mode PullMode) (string, error) {
 		return "", fmt.Errorf("pull %s from %s %s: %w", status.Branch, upstream.Remote, upstream.Ref, err)
 	}
 	return outputSummary(output), nil
+}
+
+func (r *RemoteSync) treeBlocker(ctx context.Context, status Status) error {
+	operation, err := r.operations.Active(ctx)
+	if err != nil {
+		return fmt.Errorf("check for a paused operation: %w", err)
+	}
+	if operation.Active() {
+		return &SyncBlocked{Blocker: SyncOperation}
+	}
+	if len(status.Unmerged) > 0 {
+		return &SyncBlocked{Blocker: SyncUnmerged, Paths: status.Unmerged}
+	}
+	if len(status.TrackedDirtyPaths) > 0 {
+		return &SyncBlocked{Blocker: SyncDirty, Paths: status.TrackedDirtyPaths}
+	}
+	return nil
+}
+
+func (r *RemoteSync) UpdateMain(ctx context.Context, reviewedOID string) (string, error) {
+	mainOID, found, err := r.branches.resolveRef(ctx, LocalMainRef)
+	if err != nil {
+		return "", fmt.Errorf("update main: %w", err)
+	}
+	if !found {
+		return "", fmt.Errorf("update main: %w", ErrNoLocalMain)
+	}
+	if mainOID != reviewedOID {
+		return "", fmt.Errorf("update main: %w", ErrStaleRef)
+	}
+	status, err := r.status.Snapshot(ctx)
+	if err != nil {
+		return "", fmt.Errorf("update main: %w", err)
+	}
+	updateArgs := []string{"fetch", originRemote, mainFetchRefspec}
+	if status.Branch == mainBranch && !status.Detached {
+		if err := r.treeBlocker(ctx, status); err != nil {
+			return "", fmt.Errorf("update main: %w", err)
+		}
+		updateArgs = []string{"pull", "--ff-only", originRemote, mainBranch}
+	}
+	if _, err := r.runner.Execute(ctx, Invocation{Args: updateArgs, CombineOutput: true}); err != nil {
+		return "", fmt.Errorf("update main from %s: %w", originRemote, err)
+	}
+	updatedOID, _, err := r.branches.resolveRef(ctx, LocalMainRef)
+	if err != nil {
+		return "", fmt.Errorf("update main: read updated main: %w", err)
+	}
+	return updatedOID, nil
 }
 
 func (r *RemoteSync) PushTarget(ctx context.Context) (PushTarget, error) {

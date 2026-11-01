@@ -393,7 +393,19 @@ func defaultActions() []Action {
 			}},
 		{ID: actionSetUpstream, Title: "Set upstream", Scope: ScopeGlobal, Keys: []string{"g u"}, Aliases: []Binding{{Scope: ScopeBranch, Keys: []string{"a u"}}}, Review: ReviewConfirm, Refresh: RefreshAll,
 			Available: func(app *App) (bool, string) { return false, reasonUpstreamContractGap }},
-		{ID: actionCreateFromMain, Title: "Create branch from main", Scope: ScopeBranch, Keys: []string{"a m"}, Review: ReviewConfirm, Refresh: RefreshAll},
+		{ID: actionCreateFromMain, Title: "Create branch from main", Scope: ScopeBranch, Keys: []string{"a m"}, Aliases: []Binding{{Scope: ScopeChanges, Keys: []string{"a m"}}}, Review: ReviewConfirm, Refresh: RefreshAll,
+			Available: func(app *App) (bool, string) {
+				if !app.loaded {
+					return false, reasonStatusLoading
+				}
+				return true, ""
+			},
+			Run: func(app *App) tea.Cmd {
+				return func() tea.Msg {
+					comparison, err := app.deps.Branches.CompareMain(app.ctx)
+					return mainComparedMsg{comparison: comparison, err: err}
+				}
+			}},
 		{ID: actionSwitchBranch, Title: "Switch branch", Scope: ScopeBranch, Keys: []string{"s"}, Refresh: RefreshAll,
 			Available: func(app *App) (bool, string) {
 				if _, found := app.focusedBranch(); !found {
@@ -403,25 +415,7 @@ func defaultActions() []Action {
 			},
 			Run: func(app *App) tea.Cmd {
 				focused, _ := app.focusedBranch()
-				return app.mutate(func(ctx context.Context) (func(app *App), error) {
-					var blocked *git.SwitchBlocked
-					if err := app.deps.Branches.Switch(ctx, focused.Name, focused.OID); !errors.As(err, &blocked) {
-						return nil, err
-					}
-					return func(app *App) {
-						app.notice = ""
-						review := &confirmOverlay{title: fmt.Sprintf(switchBlockedTitle, focused.Ref), command: slices.Concat(switchCommand, []string{focused.Name}),
-							consequences: append([]string{switchBlockerText[blocked.Blocker]}, blocked.Paths...), hints: blockedHints}
-						if blocked.Blocker == git.BlockedDirty {
-							review.confirmKey, review.hints = keyStashAndSwitch, stashAndSwitchHints
-							review.onConfirm = func(app *App) tea.Cmd {
-								stashAndSwitch, _ := app.registry.ByID(actionStashAndSwitch)
-								return app.runAction(stashAndSwitch)
-							}
-						}
-						app.overlay = review
-					}, nil
-				}, RefreshAll, fmt.Sprintf(switchedNotice, focused.Name))
+				return app.switchBranch(focused.Name, focused.Ref, focused.OID)
 			}},
 		{ID: actionStashAndSwitch, Title: "Stash and switch", Scope: ScopeBranch, Review: ReviewPlan, Refresh: RefreshAll},
 		{ID: actionDeleteBranch, Title: "Delete branch", Scope: ScopeBranch, Review: ReviewConfirm, Refresh: RefreshAll,

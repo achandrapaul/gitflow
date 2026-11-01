@@ -187,7 +187,7 @@ func TestDefaultActions(t *testing.T) {
 			}
 			continue
 		}
-		if slices.Contains([]ActionID{actionCommit, actionCommitNoVerify, actionAmend, actionStage, actionUnstage, actionCreateBranch,
+		if slices.Contains([]ActionID{actionCommit, actionCommitNoVerify, actionAmend, actionStage, actionUnstage, actionCreateBranch, actionCreateFromMain,
 			actionPullConfigured, actionPullRebase, actionPullFastForward, actionPush, actionForcePush}, action.ID) {
 			if available || reason != reasonStatusLoading {
 				t.Errorf("%s: available=%v reason=%q, want %q", action.ID, available, reason, reasonStatusLoading)
@@ -252,6 +252,7 @@ func TestDefaultActions(t *testing.T) {
 		{ScopeBranch, "a n", actionCreateFromRef},
 		{ScopeGlobal, "/", actionSearch},
 		{ScopeBranch, "a m", actionCreateFromMain},
+		{ScopeChanges, "a m", actionCreateFromMain},
 		{ScopeGlobal, "g u", actionSetUpstream},
 		{ScopeBranch, "a u", actionSetUpstream},
 		{ScopeGlobal, "g p", actionPullConfigured},

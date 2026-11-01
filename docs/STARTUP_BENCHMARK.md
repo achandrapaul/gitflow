@@ -95,6 +95,28 @@ The frame marker is the S01 shell, so these numbers do not include the time unti
 | Warm p95, per invocation | 72.0 – 75.4 ms |
 | Result | Every reported cold and warm p95 value is below 100 ms |
 
+## Results (2026-11-01, Slice 12)
+| Item | Value |
+|---|---|
+| Machine | Apple M1, darwin/arm64, Darwin 25.6.0 |
+| Go / Git | go1.27.3 / git 2.56.0 |
+| Cold samples (ms) | 32.1, 32.4, 32.8, 33.0, 33.1, 33.5, 33.5, 34.2, 34.4, 43.7 |
+| Cold p50 / p95 | 33.3 ms / 43.7 ms |
+| Warm p95, per invocation | 64.0 – 74.5 ms |
+| Result | Every reported cold and warm p95 value is below 100 ms |
+| Excluded | A first set of 10 runs printed only the warm max (64.9 – 80.9 ms), so its cold and p95 values were not recorded |
+
+## Results (2026-11-01, Slice 13)
+| Item | Value |
+|---|---|
+| Machine | Apple M1, darwin/arm64, Darwin 25.6.0 |
+| Go / Git | go1.27.3 / git 2.56.0 |
+| Cold samples (ms) | 610.8, 32.6, 31.6, 32.5, 32.0, 32.4, 31.8, 32.5, 32.2, 31.2 |
+| Cold p50 / max, runs 2–10 | 32.2 ms / 32.6 ms |
+| Warm p95, per invocation | 68.7 – 74.0 ms |
+| Result | Every warm p95 and every cold value from runs 2–10 is below 100 ms |
+| Excluded | Run 1 cold (610.8 ms) was the first launch of the freshly built binary, which includes the macOS security assessment listed under Not measured; its warm p95 was 71.0 ms |
+
 ## Not measured
 - Linux: no Linux machine or container was available.
 - True cold start with purged caches.

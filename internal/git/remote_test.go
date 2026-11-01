@@ -439,6 +439,105 @@ func TestForceWithLease(t *testing.T) {
 	})
 }
 
+func TestUpdateMain(t *testing.T) {
+	ctx := context.Background()
+	newBehindFixture := func(t *testing.T) (*gittest.Fixture, string) {
+		fixture := newPublishedFixture(t)
+		remoteOID := fixture.PushFromOtherClone("main", "remote", map[string]string{"other.txt": "remote\n"})
+		fixture.Git("fetch", "-q", "origin")
+		return fixture, remoteOID
+	}
+	checkoutState := func(fixture *gittest.Fixture) string {
+		return fixture.Git("status", "--porcelain=v2", "-z", "--untracked-files=all") + fixture.Git("ls-files", "--stage") + currentBranch(fixture) + refOID(fixture, "HEAD")
+	}
+	t.Run("T156 dirty feature branch updates local main only", func(t *testing.T) {
+		fixture, remoteOID := newBehindFixture(t)
+		fixture.Git("switch", "-q", "-c", "feature")
+		fixture.Write("shared.txt", "staged\n")
+		fixture.Git("add", "shared.txt")
+		fixture.Dirty("other.txt")
+		before := checkoutState(fixture)
+
+		updated, err := newTestRemoteSync(fixture).UpdateMain(ctx, refOID(fixture, "refs/heads/main"))
+		if err != nil || updated != remoteOID || refOID(fixture, "refs/heads/main") != remoteOID {
+			t.Fatalf("UpdateMain = %s, %v; main %s, want %s", updated, err, refOID(fixture, "refs/heads/main"), remoteOID)
+		}
+		if after := checkoutState(fixture); after != before {
+			t.Fatalf("feature checkout changed:\n%s\nwant\n%s", after, before)
+		}
+		if stashes := fixture.Git("stash", "list"); stashes != "" {
+			t.Fatalf("UpdateMain stashed: %s", stashes)
+		}
+	})
+	t.Run("T157 clean main fast-forwards with pull", func(t *testing.T) {
+		fixture, remoteOID := newBehindFixture(t)
+		updated, err := newTestRemoteSync(fixture).UpdateMain(ctx, refOID(fixture, "refs/heads/main"))
+		if err != nil || updated != remoteOID || refOID(fixture, "HEAD") != remoteOID || currentBranch(fixture) != "main" {
+			t.Fatalf("UpdateMain = %s, %v; HEAD %s on %q, want %s on main", updated, err, refOID(fixture, "HEAD"), currentBranch(fixture), remoteOID)
+		}
+	})
+	blockedCases := []struct {
+		name        string
+		setup       func(fixture *gittest.Fixture) string
+		wantErr     error
+		wantBlocker git.SyncBlocker
+		wantPaths   []string
+		wantFailure bool
+	}{
+		{name: "T157 dirty main is blocked", setup: func(fixture *gittest.Fixture) string {
+			fixture.Dirty("other.txt")
+			return refOID(fixture, "refs/heads/main")
+		}, wantBlocker: git.SyncDirty, wantPaths: []string{"other.txt"}},
+		{name: "main moved since review", setup: func(fixture *gittest.Fixture) string {
+			reviewed := refOID(fixture, "refs/heads/main")
+			fixture.Commit("moved", map[string]string{"shared.txt": "moved\n"})
+			fixture.Git("switch", "-q", "-c", "feature")
+			return reviewed
+		}, wantErr: git.ErrStaleRef},
+		{name: "T158 diverged main is refused natively", setup: func(fixture *gittest.Fixture) string {
+			fixture.Commit("local", map[string]string{"shared.txt": "local\n"})
+			fixture.Git("switch", "-q", "-c", "feature")
+			return refOID(fixture, "refs/heads/main")
+		}, wantFailure: true},
+		{name: "T158 network failure", setup: func(fixture *gittest.Fixture) string {
+			fixture.Git("switch", "-q", "-c", "feature")
+			fixture.Git("remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing.git"))
+			return refOID(fixture, "refs/heads/main")
+		}, wantFailure: true},
+		{name: "T158 missing local main", setup: func(fixture *gittest.Fixture) string {
+			reviewed := refOID(fixture, "refs/heads/main")
+			fixture.Git("switch", "-q", "-c", "feature")
+			fixture.Git("branch", "-q", "-D", "main")
+			return reviewed
+		}, wantErr: git.ErrNoLocalMain},
+	}
+	for _, testCase := range blockedCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			fixture, _ := newBehindFixture(t)
+			reviewed := testCase.setup(fixture)
+			before := fixture.Snapshot()
+
+			updated, err := newTestRemoteSync(fixture).UpdateMain(ctx, reviewed)
+			switch {
+			case testCase.wantErr != nil:
+				if !errors.Is(err, testCase.wantErr) {
+					t.Fatalf("UpdateMain = %s, %v; want %v", updated, err, testCase.wantErr)
+				}
+			case testCase.wantBlocker != 0:
+				wantSyncBlocked(t, err, testCase.wantBlocker, testCase.wantPaths)
+			case testCase.wantFailure:
+				var commandErr *git.CommandError
+				if !errors.As(err, &commandErr) {
+					t.Fatalf("UpdateMain = %s, %v; want native Git failure", updated, err)
+				}
+			}
+			if after := fixture.Snapshot(); after != before {
+				t.Fatal("refused update changed the repository")
+			}
+		})
+	}
+}
+
 func TestCommandErrorRedactsCredentials(t *testing.T) {
 	commandErr := &git.CommandError{Args: []string{"push"}, Stderr: "fatal: unable to access 'https://user:" + leakedSecret + "@example.invalid/x.git/'"}
 	if message := commandErr.Error(); strings.Contains(message, leakedSecret) || !strings.Contains(message, "example.invalid") {

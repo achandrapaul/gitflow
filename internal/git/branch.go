@@ -14,7 +14,7 @@ import (
 
 const (
 	remoteMainRef        = "refs/remotes/origin/main"
-	localMainRef         = "refs/heads/main"
+	LocalMainRef         = "refs/heads/main"
 	fetchHeadName        = "FETCH_HEAD"
 	countFieldSize       = 2
 	localRefPrefix       = "refs/heads/"
@@ -33,6 +33,7 @@ var (
 	ErrStaleRef          = errors.New("ref moved since review")
 	ErrCurrentBranch     = errors.New("branch is checked out")
 	ErrNotLocalBranch    = errors.New("not a local branch")
+	ErrNoLocalMain       = errors.New("local main does not exist")
 )
 
 type SwitchBlocker int
@@ -82,10 +83,10 @@ type AheadBehind struct {
 	Behind int
 }
 
-type MainUpdate struct {
-	Fetched       bool
-	FastForwarded bool
-	Reason        string
+type MainComparison struct {
+	LocalOID    string
+	RemoteFound bool
+	Counts      AheadBehind
 }
 
 type Brancher struct {
@@ -191,17 +192,38 @@ func (b *Brancher) AheadBehind(ctx context.Context, local, other string) (AheadB
 }
 
 func (b *Brancher) ResolveBase(ctx context.Context) (string, error) {
-	output, err := b.runner.Read(ctx, "for-each-ref", "--format=%(refname)", remoteMainRef, localMainRef)
+	output, err := b.runner.Read(ctx, "for-each-ref", "--format=%(refname)", remoteMainRef, LocalMainRef)
 	if err != nil {
 		return "", fmt.Errorf("resolve comparison base: %w", err)
 	}
 	refs := strings.Split(string(output), "\n")
-	for _, candidate := range []string{remoteMainRef, localMainRef} {
+	for _, candidate := range []string{remoteMainRef, LocalMainRef} {
 		if slices.Contains(refs, candidate) {
 			return candidate, nil
 		}
 	}
 	return "", nil
+}
+
+func (b *Brancher) CompareMain(ctx context.Context) (MainComparison, error) {
+	localOID, found, err := b.resolveRef(ctx, LocalMainRef)
+	if err != nil {
+		return MainComparison{}, fmt.Errorf("compare main with origin/main: %w", err)
+	}
+	if !found {
+		return MainComparison{}, fmt.Errorf("compare main with origin/main: %w", ErrNoLocalMain)
+	}
+	comparison := MainComparison{LocalOID: localOID}
+	if _, comparison.RemoteFound, err = b.resolveRef(ctx, remoteMainRef); err != nil {
+		return MainComparison{}, fmt.Errorf("compare main with origin/main: %w", err)
+	}
+	if !comparison.RemoteFound {
+		return comparison, nil
+	}
+	if comparison.Counts, err = b.AheadBehind(ctx, LocalMainRef, remoteMainRef); err != nil {
+		return MainComparison{}, fmt.Errorf("compare main with origin/main: %w", err)
+	}
+	return comparison, nil
 }
 
 func (b *Brancher) HeadPublished(ctx context.Context) (bool, error) {
@@ -340,8 +362,4 @@ func (b *Brancher) Delete(ctx context.Context, name, reviewedOID string) error {
 		return fmt.Errorf("delete branch %s: %w", name, err)
 	}
 	return nil
-}
-
-func (b *Brancher) UpdateMainFastForward(ctx context.Context) (MainUpdate, error) {
-	return MainUpdate{}, errNotImplemented
 }

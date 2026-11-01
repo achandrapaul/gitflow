@@ -327,6 +327,15 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			input.validated, input.validation = msg.name, msg.err
 		}
 		return app, nil
+	case mainComparedMsg:
+		if msg.err != nil {
+			app.errorText = msg.err.Error()
+			return app, nil
+		}
+		input, cmd := newNameInput(git.LocalMainRef, msg.comparison.LocalOID)
+		input.main = &msg.comparison
+		app.overlay = input
+		return app, cmd
 	case mutationDoneMsg:
 		app.busy = false
 		if msg.err != nil {

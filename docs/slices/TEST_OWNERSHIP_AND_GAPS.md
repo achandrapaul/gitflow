@@ -118,14 +118,14 @@
 | T148 | **UNASSIGNED — CONTRACT GATE** | v2.3 scenario body unavailable; do not infer test from ID or old 3-slice allocation. Slice 11 supporting part only: Execute in the Apply Files Planner is blocked by dirty or staged tracked changes and offers no stash (TestSelectiveApplyBlockers) |
 | T149 | **UNASSIGNED — CONTRACT GATE** | v2.3 scenario body unavailable; do not infer test from ID or old 3-slice allocation |
 | T150 | **UNASSIGNED — CONTRACT GATE** | v2.3 scenario body unavailable; do not infer test from ID or old 3-slice allocation |
-| T151 | **UNASSIGNED — CONTRACT GATE** | v2.3 scenario body unavailable; do not infer test from ID or old 3-slice allocation |
-| T152 | **UNASSIGNED — CONTRACT GATE** | v2.3 scenario body unavailable; do not infer test from ID or old 3-slice allocation |
-| T153 | **UNASSIGNED — CONTRACT GATE** | v2.3 scenario body unavailable; do not infer test from ID or old 3-slice allocation |
-| T154 | **UNASSIGNED — CONTRACT GATE** | v2.3 scenario body unavailable; do not infer test from ID or old 3-slice allocation |
-| T155 | **UNASSIGNED — CONTRACT GATE** | v2.3 scenario body unavailable; do not infer test from ID or old 3-slice allocation |
-| T156 | **UNASSIGNED — CONTRACT GATE** | v2.3 scenario body unavailable; do not infer test from ID or old 3-slice allocation |
-| T157 | **UNASSIGNED — CONTRACT GATE** | v2.3 scenario body unavailable; do not infer test from ID or old 3-slice allocation |
-| T158 | **UNASSIGNED — CONTRACT GATE** | v2.3 scenario body unavailable; do not infer test from ID or old 3-slice allocation |
+| T151 | 13 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 13 |
+| T152 | 14 | ST02 Stash and Switch; v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 13 |
+| T153 | 14 | ST02 Stash and Switch; v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 13 |
+| T154 | 14 | ST02 Stash and Switch; v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 13 |
+| T155 | 13 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 13 |
+| T156 | 13 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 13 |
+| T157 | 13 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 13 |
+| T158 | 13 | v2.3 wording verified against tests/SCENARIOS_V2_3.md in Slice 13 |
 | T159 | **UNASSIGNED — CONTRACT GATE** | v2.3 scenario body unavailable; do not infer test from ID or old 3-slice allocation |
 | T160 | **UNASSIGNED — CONTRACT GATE** | v2.3 scenario body unavailable; do not infer test from ID or old 3-slice allocation |
 | T161 | **UNASSIGNED — CONTRACT GATE** | v2.3 scenario body unavailable; do not infer test from ID or old 3-slice allocation |
